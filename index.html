@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#080808">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="PWA Hub">
+<meta name="description" content="Turn any HTML file into an installable PWA. No server. No build tools. Forever.">
+<link rel="manifest" id="hubManifest">
+<title>PWA HUB — HTML → App</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;700;800&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --bg:       #080808;
+  --surface:  #0f0f0f;
+  --border:   #1c1c1c;
+  --border2:  #2a2a2a;
+  --text:     #e8e8e8;
+  --muted:    #555;
+  --dim:      #333;
+  --accent:   #c8ff00;
+  --accent2:  #00ffcc;
+  --danger:   #ff4444;
+  --mono:     'DM Mono', monospace;
+  --sans:     'Syne', sans-serif;
+  --radius:   6px;
+}
+
+html { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); }
+body { min-height: 100%; display: flex; flex-direction: column; }
+
+/* ── NOISE TEXTURE ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 0; opacity: 0.6;
+}
+
+/* ── LAYOUT ── */
+.wrap { max-width: 780px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; width: 100%; }
+
+/* ── HEADER ── */
+header {
+  padding: 48px 0 36px;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  font-family: var(--sans);
+  font-size: clamp(32px, 6vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.logo span {
+  color: var(--accent);
+  position: relative;
+}
+
+.tagline {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.hub-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.2em;
+  margin-top: 16px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+}
+
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.dot.green { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse 2s ease infinite; }
+.dot.yellow { background: #ffcc00; box-shadow: 0 0 6px #ffcc00; animation: pulse 2s ease infinite; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── MAIN CONTENT ── */
+main { flex: 1; padding: 40px 0 60px; }
+
+/* ── SECTION TITLES ── */
+.section-title {
+  font-size: 10px;
+  letter-spacing: 0.35em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── DROP ZONE ── */
+.drop-zone {
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius);
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  margin-bottom: 40px;
+}
+
+.drop-zone::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(200,255,0,0.04) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: var(--accent);
+  background: rgba(200,255,0,0.03);
+}
+
+.drop-zone.dragover { box-shadow: 0 0 30px rgba(200,255,0,0.08); }
+
+.drop-icon {
+  font-size: 36px;
+  margin-bottom: 14px;
+  display: block;
+  opacity: 0.4;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.drop-zone:hover .drop-icon, .drop-zone.dragover .drop-icon {
+  opacity: 0.9;
+  transform: translateY(-3px);
+}
+
+.drop-title {
+  font-family: var(--sans);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.drop-sub {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+}
+
+.drop-btn {
+  display: inline-block;
+  margin-top: 18px;
+  padding: 8px 20px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  background: none;
+  text-transform: uppercase;
+}
+.drop-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#fileInput { display: none; }
+
+/* ── APP CONFIG PANEL ── */
+.config-panel {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 40px;
+  animation: slideIn 0.25s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.config-panel.visible { display: block; }
+
+.config-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.config-file {
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.config-size {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+}
+
+.config-body { padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media(max-width:520px){ .config-body { grid-template-columns: 1fr; } }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field.full { grid-column: 1 / -1; }
+
+.field label {
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.field input, .field select {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
+.field select option { background: var(--bg); }
+
+/* Icon preview */
+.icon-row { display: flex; align-items: center; gap: 12px; grid-column: 1 / -1; }
+.icon-preview-wrap { flex-shrink: 0; }
+#iconPreview {
+  width: 64px; height: 64px;
+  border-radius: 14px;
+  border: 1px solid var(--border2);
+  display: block;
+}
+.icon-options { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.emoji-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.emoji-btn {
+  width: 32px; height: 32px;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.1s;
+}
+.emoji-btn:hover, .emoji-btn.sel { border-color: var(--accent); background: rgba(200,255,0,0.06); }
+
+.generate-btn {
+  grid-column: 1 / -1;
+  background: var(--accent);
+  color: #080808;
+  border: none;
+  border-radius: var(--radius);
+  padding: 13px 24px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+.generate-btn:hover { background: #d4ff33; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(200,255,0,0.25); }
+.generate-btn:active { transform: translateY(0); }
+.generate-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ── PROGRESS ── */
+.progress-wrap {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  margin-bottom: 40px;
+}
+.progress-wrap.visible { display: block; }
+.progress-label { font-size: 11px; color: var(--muted); letter-spacing: 0.15em; margin-bottom: 10px; }
+.progress-bar { height: 2px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s ease; box-shadow: 0 0 8px var(--accent); }
+.progress-status { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; margin-top: 8px; }
+
+/* ── INSTALL PANEL ── */
+.install-panel {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 40px;
+  animation: slideIn 0.25s ease;
+}
+.install-panel.visible { display: block; }
+
+.install-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+}
+
+.install-icon { width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0; }
+
+.install-meta { flex: 1; }
+.install-name { font-family: var(--sans); font-size: 16px; font-weight: 700; }
+.install-url { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; margin-top: 2px; }
+
+.install-body { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+
+.install-btn {
+  background: var(--accent);
+  color: #080808;
+  border: none;
+  border-radius: var(--radius);
+  padding: 13px 24px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  width: 100%;
+}
+.install-btn:hover { background: #d4ff33; }
+.install-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.install-hint {
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.1em;
+  line-height: 1.6;
+}
+
+.install-hint a { color: var(--accent2); text-decoration: none; }
+
+/* ── APP LIST ── */
+.app-list { display: flex; flex-direction: column; gap: 2px; }
+.app-list-empty {
+  padding: 32px 20px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.15em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.app-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s;
+}
+.app-item:hover { border-color: var(--border2); }
+
+.app-item-icon { width: 40px; height: 40px; border-radius: 9px; flex-shrink: 0; }
+.app-item-info { flex: 1; min-width: 0; }
+.app-item-name { font-family: var(--sans); font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-item-meta { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; margin-top: 2px; }
+
+.app-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.app-action {
+  padding: 5px 10px;
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  background: none;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.1s;
+  text-decoration: none;
+  display: inline-flex; align-items: center;
+}
+.app-action:hover { border-color: var(--accent2); color: var(--accent2); }
+.app-action.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 10px 18px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--text);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 1000;
+  white-space: nowrap;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.ok { border-color: var(--accent); color: var(--accent); }
+.toast.err { border-color: var(--danger); color: var(--danger); }
+
+/* ── FOOTER ── */
+footer {
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.2em;
+  text-align: center;
+}
+footer a { color: var(--muted); text-decoration: none; }
+footer a:hover { color: var(--accent); }
+
+/* ── HOW IT WORKS ── */
+.how { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 40px; }
+.how-step { background: var(--surface); padding: 20px 16px; }
+.how-num { font-family: var(--sans); font-size: 28px; font-weight: 800; color: var(--accent); opacity: 0.3; line-height: 1; margin-bottom: 8px; }
+.how-title { font-family: var(--sans); font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+.how-desc { font-size: 10px; color: var(--muted); letter-spacing: 0.05em; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="logo">PWA<span>HUB</span></div>
+    <div class="tagline">Turn any HTML file into an installable app — forever offline</div>
+    <div class="hub-status">
+      <div class="dot" id="swDot"></div>
+      <span id="swStatus">CHECKING SERVICE WORKER…</span>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- HOW IT WORKS -->
+    <div class="how">
+      <div class="how-step">
+        <div class="how-num">01</div>
+        <div class="how-title">Drop HTML</div>
+        <div class="how-desc">Any self-contained HTML file. No server needed.</div>
+      </div>
+      <div class="how-step">
+        <div class="how-num">02</div>
+        <div class="how-title">Configure</div>
+        <div class="how-desc">Name, icon, display mode. Done in seconds.</div>
+      </div>
+      <div class="how-step">
+        <div class="how-num">03</div>
+        <div class="how-title">Generate</div>
+        <div class="how-desc">Stored in your browser. A virtual URL is created.</div>
+      </div>
+      <div class="how-step">
+        <div class="how-num">04</div>
+        <div class="how-title">Install</div>
+        <div class="how-desc">Chrome installs it. Runs forever. No server. No internet.</div>
+      </div>
+    </div>
+
+    <!-- DROP ZONE -->
+    <div class="section-title">01 · Drop your HTML</div>
+    <div class="drop-zone" id="dropZone">
+      <span class="drop-icon">⬡</span>
+      <div class="drop-title">Drop HTML file here</div>
+      <div class="drop-sub">or click to browse — any self-contained .html file</div>
+      <button class="drop-btn" onclick="document.getElementById('fileInput').click()">Browse File</button>
+    </div>
+    <input type="file" id="fileInput" accept=".html,.htm">
+
+    <!-- CONFIG PANEL -->
+    <div class="config-panel" id="configPanel">
+      <div class="config-header">
+        <div class="config-file">
+          <span>◈</span>
+          <span id="configFileName">—</span>
+        </div>
+        <div class="config-size" id="configFileSize">—</div>
+      </div>
+      <div class="config-body">
+        <div class="field">
+          <label>App Name</label>
+          <input type="text" id="appName" placeholder="My Awesome App">
+        </div>
+        <div class="field">
+          <label>Short Name</label>
+          <input type="text" id="appShortName" placeholder="MyApp" maxlength="12">
+        </div>
+        <div class="field">
+          <label>Display Mode</label>
+          <select id="appDisplay">
+            <option value="standalone">Standalone (no browser UI)</option>
+            <option value="fullscreen">Fullscreen</option>
+            <option value="minimal-ui">Minimal UI</option>
+            <option value="browser">Browser tab</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Orientation</label>
+          <select id="appOrientation">
+            <option value="any">Any</option>
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label>App Icon</label>
+          <div class="icon-row">
+            <div class="icon-preview-wrap">
+              <canvas id="iconPreview" width="64" height="64"></canvas>
+            </div>
+            <div class="icon-options">
+              <div style="font-size:10px;color:var(--muted);letter-spacing:0.1em">Choose emoji or auto-generate from name</div>
+              <div class="emoji-row" id="emojiRow">
+                <button class="emoji-btn" data-emoji="⬡">⬡</button>
+                <button class="emoji-btn" data-emoji="🎵">🎵</button>
+                <button class="emoji-btn" data-emoji="📊">📊</button>
+                <button class="emoji-btn" data-emoji="🔧">🔧</button>
+                <button class="emoji-btn" data-emoji="📝">📝</button>
+                <button class="emoji-btn" data-emoji="🎮">🎮</button>
+                <button class="emoji-btn" data-emoji="📡">📡</button>
+                <button class="emoji-btn" data-emoji="⚡">⚡</button>
+                <button class="emoji-btn" data-emoji="🌐">🌐</button>
+                <button class="emoji-btn" data-emoji="🔮">🔮</button>
+                <button class="emoji-btn sel" data-emoji="auto">A</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="generate-btn" id="generateBtn" onclick="generatePWA()">⬡ Generate PWA</button>
+      </div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label" id="progressLabel">GENERATING…</div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-status" id="progressStatus">Initializing…</div>
+    </div>
+
+    <!-- INSTALL PANEL -->
+    <div class="install-panel" id="installPanel">
+      <div class="install-header">
+        <canvas class="install-icon" id="installIcon" width="44" height="44"></canvas>
+        <div class="install-meta">
+          <div class="install-name" id="installName">—</div>
+          <div class="install-url" id="installUrl">—</div>
+        </div>
+      </div>
+      <div class="install-body">
+        <button class="install-btn" id="installBtn" onclick="promptInstall()">⊕ Install App</button>
+        <div class="install-hint" id="installHint">
+          Waiting for Chrome install prompt…<br>
+          If it doesn't appear: Chrome menu → <strong>Add to Home Screen</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- INSTALLED APPS -->
+    <div class="section-title" style="margin-top:40px">02 · Installed Apps</div>
+    <div id="appListWrap"></div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    PWAHUB · SINGLE FILE · GITHUB PAGES · NO BUILD TOOLS · NO SERVER · <a href="https://github.com" target="_blank">FORK ON GITHUB</a>
+  </div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ════════════════════════════════════════════════
+// CONSTANTS
+// ════════════════════════════════════════════════
+const DB_NAME    = 'pwahub';
+const DB_VERSION = 1;
+const STORE_APPS = 'apps';
+const SW_CACHE   = 'pwahub-shell-v1';
+const HUB_URL    = location.href.split('?')[0].split('#')[0];
+const BASE_PATH  = HUB_URL.substring(0, HUB_URL.lastIndexOf('/') + 1);
+
+// ════════════════════════════════════════════════
+// IDB
+// ════════════════════════════════════════════════
+let db;
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains(STORE_APPS)) {
+        d.createObjectStore(STORE_APPS, { keyPath: 'slug' });
+      }
+    };
+    req.onsuccess = e => { db = e.target.result; res(db); };
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+
+function dbPut(store, val) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(val).onsuccess = e => res(e.target.result);
+    t
