@@ -1,11 +1,11 @@
-
+'use strict';
 const DB_NAME    = 'pwahub';
 const DB_VERSION = 1;
 const STORE_APPS = 'apps';
 const CACHE_NAME = 'pwahub-shell-v1';
-const HUB_URL    = 'content://com.android.providers.downloads.documents/document/1366';
-const BASE_PATH  = 'content://com.android.providers.downloads.documents/document/';
-const HUB_MANIFEST_URL = BASE_PATH + 'manifest.json';
+// Derive paths from SW script location — works regardless of deployment directory
+const BASE_PATH  = new URL('./', self.location).href;
+const MANIFEST_PATH = BASE_PATH + 'manifest.json';
 
 let db;
 function openDB() {
@@ -13,9 +13,8 @@ function openDB() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = e => {
       const d = e.target.result;
-      if (!d.objectStoreNames.contains(STORE_APPS)) {
+      if (!d.objectStoreNames.contains(STORE_APPS))
         d.createObjectStore(STORE_APPS, { keyPath: 'slug' });
-      }
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
     req.onerror   = e => rej(e.target.error);
@@ -33,7 +32,7 @@ function dbGet(key) {
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME)
-      .then(c => c.add(new Request(HUB_URL, { cache: 'reload' })))
+      .then(c => c.add(new Request(BASE_PATH, { cache: 'reload' })))
       .then(() => self.skipWaiting())
   );
 });
@@ -48,54 +47,22 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  const appSlug = url.searchParams.get('app');
 
-  // Hub shell — serve from cache
-  if (e.request.url === HUB_URL || e.request.destination === 'document' && url.pathname === new URL(HUB_URL).pathname && !url.searchParams.has('app')) {
+  // Hub manifest
+  if (e.request.url.startsWith(MANIFEST_PATH) && !appSlug) {
     e.respondWith(
-      caches.match(HUB_URL).then(cached => cached || fetch(e.request).then(r => {
-        caches.open(CACHE_NAME).then(c => c.put(HUB_URL, r.clone()));
-        return r;
-      }))
-    );
-    return;
-  }
-
-  // App requests: ?app=slug or /app/slug/
-  const appSlug = url.searchParams.get('app') || (() => {
-    const m = url.pathname.match(/\/app\/([^\/]+)\//);
-    return m ? m[1] : null;
-  })();
-
-  if (appSlug) {
-    e.respondWith(
-      openDB().then(() => dbGet(appSlug)).then(app => {
-        if (!app) return new Response('<h1>App not found</h1>', { headers: { 'Content-Type': 'text/html' } });
-        return new Response(app.html, {
-          headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-store'
-          }
-        });
-      }).catch(() => new Response('<h1>Error loading app</h1>', { headers: { 'Content-Type': 'text/html' } }))
-    );
-    return;
-  }
-
-  // Hub manifest — served from cache (populated by injectHubManifest)
-  if (e.request.url === HUB_MANIFEST_URL && !url.searchParams.has('app')) {
-    e.respondWith(
-      caches.match(HUB_MANIFEST_URL).then(r => r || new Response('{}', {
+      caches.match(MANIFEST_PATH).then(r => r || new Response('{}', {
         headers: { 'Content-Type': 'application/manifest+json' }
       }))
     );
     return;
   }
 
-  // Manifest for generated apps: /manifest.json?app=slug
-  if (e.request.url.startsWith(HUB_MANIFEST_URL) && url.searchParams.has('app')) {
-    const slug = url.searchParams.get('app');
+  // Generated app manifest: /manifest.json?app=slug
+  if (e.request.url.startsWith(MANIFEST_PATH) && appSlug) {
     e.respondWith(
-      openDB().then(() => dbGet(slug)).then(app => {
+      openDB().then(() => dbGet(appSlug)).then(app => {
         if (!app) return new Response('{}', { headers: { 'Content-Type': 'application/manifest+json' } });
         const m = {
           name: app.name,
@@ -117,6 +84,33 @@ self.addEventListener('fetch', e => {
     return;
   }
 
+  // Hub shell — serve from cache
+  if (!appSlug && e.request.destination === 'document' &&
+      (url.pathname === new URL(BASE_PATH).pathname ||
+       url.pathname === new URL(BASE_PATH).pathname + 'index.html' ||
+       url.pathname.endsWith('/pwa-hub.html'))) {
+    e.respondWith(
+      caches.match(BASE_PATH).then(cached => cached || fetch(e.request).then(r => {
+        caches.open(CACHE_NAME).then(c => c.put(BASE_PATH, r.clone()));
+        return r;
+      }))
+    );
+    return;
+  }
+
+  // Generated app: ?app=slug
+  if (appSlug) {
+    e.respondWith(
+      openDB().then(() => dbGet(appSlug)).then(app => {
+        if (!app) return new Response('<h1>App not found</h1>', { headers: { 'Content-Type': 'text/html' } });
+        return new Response(app.html, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
+        });
+      }).catch(() => new Response('<h1>Error loading app</h1>', { headers: { 'Content-Type': 'text/html' } }))
+    );
+    return;
+  }
+
   // Fonts — cache
   if (e.request.url.includes('fonts.googleapis.com') || e.request.url.includes('fonts.gstatic.com')) {
     e.respondWith(
@@ -133,8 +127,6 @@ self.addEventListener('fetch', e => {
 self.addEventListener('message', e => {
   if (!e.data) return;
   if (e.data.type === 'CACHE_APP') {
-    // Apps are served dynamically from IndexedDB — no URL caching needed.
-    // Hub shell is already cached on install.
-    console.log('[SW] CACHE_APP ack for', e.data.url);
+    console.log('[SW] CACHE_APP ack', e.data.url);
   }
 });
