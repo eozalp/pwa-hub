@@ -650,4 +650,591 @@ function dbPut(store, val) {
   return new Promise((res, rej) => {
     const tx = db.transaction(store, 'readwrite');
     tx.objectStore(store).put(val).onsuccess = e => res(e.target.result);
-    t
+    tx.onerror = e => rej(e.target.error);
+  });
+}
+
+function dbGet(store, key) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    tx.objectStore(store).get(key).onsuccess = e => res(e.target.result);
+    tx.onerror = e => rej(e.target.error);
+  });
+}
+
+function dbGetAll(store) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    tx.objectStore(store).getAll().onsuccess = e => res(e.target.result);
+    tx.onerror = e => rej(e.target.error);
+  });
+}
+
+function dbDelete(store, key) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key).onsuccess = () => res();
+    tx.onerror = e => rej(e.target.error);
+  });
+}
+
+// ════════════════════════════════════════════════
+// SERVICE WORKER (inline blob)
+// ════════════════════════════════════════════════
+const SW_CODE = `
+const DB_NAME    = 'pwahub';
+const DB_VERSION = 1;
+const STORE_APPS = 'apps';
+const CACHE_NAME = 'pwahub-shell-v1';
+const HUB_URL    = '${HUB_URL}';
+const BASE_PATH  = '${BASE_PATH}';
+
+let db;
+function openDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains(STORE_APPS)) {
+        d.createObjectStore(STORE_APPS, { keyPath: 'slug' });
+      }
+    };
+    req.onsuccess = e => { db = e.target.result; res(db); };
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+
+function dbGet(key) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE_APPS, 'readonly');
+    tx.objectStore(STORE_APPS).get(key).onsuccess = e => res(e.target.result);
+    tx.onerror = e => rej(e.target.error);
+  });
+}
+
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(c => c.add(new Request(HUB_URL, { cache: 'reload' })))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+
+  // Hub shell — serve from cache
+  if (e.request.url === HUB_URL || e.request.destination === 'document' && url.pathname === new URL(HUB_URL).pathname && !url.searchParams.has('app')) {
+    e.respondWith(
+      caches.match(HUB_URL).then(cached => cached || fetch(e.request).then(r => {
+        caches.open(CACHE_NAME).then(c => c.put(HUB_URL, r.clone()));
+        return r;
+      }))
+    );
+    return;
+  }
+
+  // App requests: ?app=slug or /app/slug/
+  const appSlug = url.searchParams.get('app') || (() => {
+    const m = url.pathname.match(/\\/app\\/([^\\/]+)\\//);
+    return m ? m[1] : null;
+  })();
+
+  if (appSlug) {
+    e.respondWith(
+      openDB().then(() => dbGet(appSlug)).then(app => {
+        if (!app) return new Response('<h1>App not found</h1>', { headers: { 'Content-Type': 'text/html' } });
+        return new Response(app.html, {
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store'
+          }
+        });
+      }).catch(() => new Response('<h1>Error loading app</h1>', { headers: { 'Content-Type': 'text/html' } }))
+    );
+    return;
+  }
+
+  // Fonts — cache
+  if (e.request.url.includes('fonts.googleapis.com') || e.request.url.includes('fonts.gstatic.com')) {
+    e.respondWith(
+      caches.match(e.request).then(c => c || fetch(e.request).then(r => {
+        caches.open(CACHE_NAME).then(cache => cache.put(e.request, r.clone()));
+        return r;
+      }))
+    );
+    return;
+  }
+  // Everything else — network
+});
+`;
+
+let swRegistration = null;
+
+async function registerSW() {
+  if (!('serviceWorker' in navigator)) {
+    setSwStatus(false, 'SERVICE WORKER NOT SUPPORTED');
+    return;
+  }
+  if (location.protocol === 'file:') {
+    setSwStatus(false, 'NEEDS HTTPS — USE GITHUB PAGES');
+    return;
+  }
+  try {
+    const blob = new Blob([SW_CODE], { type: 'application/javascript' });
+    const swUrl = URL.createObjectURL(blob);
+    swRegistration = await navigator.serviceWorker.register(swUrl, { scope: BASE_PATH });
+    URL.revokeObjectURL(swUrl);
+    setSwStatus(true, 'SERVICE WORKER ACTIVE');
+    console.log('[PWAHUB] SW registered, scope:', swRegistration.scope);
+  } catch (err) {
+    setSwStatus(false, 'SW REGISTRATION FAILED');
+    console.error('[PWAHUB] SW error:', err);
+  }
+}
+
+function setSwStatus(ok, msg) {
+  document.getElementById('swDot').className = 'dot ' + (ok ? 'green' : 'yellow');
+  document.getElementById('swStatus').textContent = msg;
+}
+
+// ════════════════════════════════════════════════
+// MANIFEST (hub itself as PWA)
+// ════════════════════════════════════════════════
+function injectHubManifest() {
+  const icon = generateIcon('⬡', '#c8ff00', '#080808', 512);
+  const manifest = {
+    name: 'PWA Hub',
+    short_name: 'PWA Hub',
+    description: 'Turn any HTML into an installable PWA',
+    start_url: HUB_URL,
+    display: 'standalone',
+    background_color: '#080808',
+    theme_color: '#080808',
+    icons: [{ src: icon, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+  document.getElementById('hubManifest').href = URL.createObjectURL(blob);
+}
+
+// ════════════════════════════════════════════════
+// ICON GENERATION
+// ════════════════════════════════════════════════
+let selectedEmoji = 'auto';
+
+function generateIcon(label, bgColor, textColor, size = 512) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const r = size * 0.15;
+
+  // Background
+  ctx.fillStyle = bgColor || '#1a1a1a';
+  roundRect(ctx, 0, 0, size, size, r);
+  ctx.fill();
+
+  // Text
+  const isEmoji = [...label].length === 1 && label.codePointAt(0) > 127;
+  ctx.font = isEmoji
+    ? `${size * 0.52}px serif`
+    : `900 ${size * 0.48}px 'Syne', sans-serif`;
+  ctx.fillStyle = textColor || '#c8ff00';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, size / 2, size / 2 + (isEmoji ? 0 : size * 0.02));
+
+  return canvas.toDataURL('image/png');
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function updateIconPreview() {
+  const name  = document.getElementById('appName').value.trim();
+  const canvas = document.getElementById('iconPreview');
+  const ctx   = canvas.getContext('2d');
+  const size  = 64;
+
+  let label, bg, fg;
+  if (selectedEmoji === 'auto') {
+    label = (name || 'A')[0].toUpperCase();
+    bg    = '#1a1a1a';
+    fg    = '#c8ff00';
+  } else {
+    label = selectedEmoji;
+    bg    = '#1a1a1a';
+    fg    = '#fff';
+  }
+
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = bg;
+  roundRect(ctx, 0, 0, size, size, 10);
+  ctx.fill();
+
+  const isEmoji = [...label].length === 1 && label.codePointAt(0) > 127;
+  ctx.font = isEmoji ? `${size * 0.52}px serif` : `900 ${size * 0.5}px sans-serif`;
+  ctx.fillStyle = fg;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, size / 2, size / 2 + (isEmoji ? 0 : 1));
+}
+
+// ════════════════════════════════════════════════
+// FILE HANDLING
+// ════════════════════════════════════════════════
+let loadedFile = null;
+let loadedHTML = '';
+
+function handleFile(file) {
+  if (!file || !file.name.match(/\.html?$/i)) {
+    toast('Only .html files please', 'err');
+    return;
+  }
+  loadedFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    loadedHTML = e.target.result;
+
+    // Auto-fill name from <title>
+    const titleMatch = loadedHTML.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const autoName   = titleMatch ? titleMatch[1].trim() : file.name.replace(/\.html?$/i, '');
+
+    document.getElementById('appName').value      = autoName;
+    document.getElementById('appShortName').value = autoName.slice(0, 12);
+    document.getElementById('configFileName').textContent = file.name;
+    document.getElementById('configFileSize').textContent = formatBytes(file.size);
+
+    updateIconPreview();
+    document.getElementById('configPanel').classList.add('visible');
+    document.getElementById('installPanel').classList.remove('visible');
+    document.getElementById('progressWrap').classList.remove('visible');
+  };
+  reader.readAsText(file);
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+}
+
+// ════════════════════════════════════════════════
+// PWA GENERATION
+// ════════════════════════════════════════════════
+let lastDeferredPrompt = null;
+let lastGeneratedSlug  = null;
+
+async function generatePWA() {
+  if (!loadedHTML) { toast('No file loaded', 'err'); return; }
+
+  const name        = document.getElementById('appName').value.trim() || 'My App';
+  const shortName   = document.getElementById('appShortName').value.trim() || name.slice(0, 12);
+  const displayMode = document.getElementById('appDisplay').value;
+  const orientation = document.getElementById('appOrientation').value;
+
+  const slug     = slugify(name) + '-' + Date.now().toString(36);
+  const appUrl   = BASE_PATH + '?app=' + slug;
+
+  // Icon
+  let label, bg, fg;
+  if (selectedEmoji === 'auto') {
+    label = name[0].toUpperCase(); bg = '#1a1a1a'; fg = '#c8ff00';
+  } else {
+    label = selectedEmoji; bg = '#1a1a1a'; fg = '#fff';
+  }
+  const icon512 = generateIcon(label, bg, fg, 512);
+  const icon192 = generateIcon(label, bg, fg, 192);
+
+  // Build manifest
+  const manifest = {
+    name, short_name: shortName,
+    start_url: appUrl,
+    display: displayMode,
+    orientation,
+    background_color: '#000000',
+    theme_color: '#000000',
+    icons: [
+      { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+    ]
+  };
+
+  // Inject PWA meta into the source HTML
+  const manifestBlob   = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(manifest));
+  const metaInjection  = `
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="${shortName}">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="${manifestBlob}">
+<link rel="apple-touch-icon" href="${icon192}">
+`;
+
+  let finalHTML = loadedHTML;
+  if (finalHTML.match(/<head[^>]*>/i)) {
+    finalHTML = finalHTML.replace(/(<head[^>]*>)/i, '$1' + metaInjection);
+  } else {
+    finalHTML = metaInjection + finalHTML;
+  }
+
+  // Show progress
+  setProgress(true, 'SAVING TO BROWSER STORAGE', 0, 'Opening IndexedDB…');
+
+  try {
+    setProgress(true, 'SAVING TO BROWSER STORAGE', 30, 'Writing HTML to IndexedDB…');
+    await dbPut(STORE_APPS, {
+      slug,
+      name,
+      shortName,
+      displayMode,
+      appUrl,
+      icon: icon192,
+      html: finalHTML,
+      size: loadedHTML.length,
+      created: Date.now()
+    });
+
+    setProgress(true, 'CACHING APP URL', 60, 'Pre-caching app URL in service worker…');
+
+    // Tell SW to cache the app URL
+    if (swRegistration && swRegistration.active) {
+      swRegistration.active.postMessage({ type: 'CACHE_APP', url: appUrl });
+    }
+
+    await sleep(300);
+    setProgress(true, 'FINALIZING', 90, 'Preparing install panel…');
+    await sleep(200);
+
+    setProgress(false);
+    lastGeneratedSlug = slug;
+
+    // Show install panel
+    showInstallPanel(name, appUrl, icon192);
+    renderAppList();
+    toast('PWA generated!', 'ok');
+
+  } catch (err) {
+    setProgress(false);
+    toast('Generation failed: ' + err.message, 'err');
+    console.error(err);
+  }
+}
+
+function showInstallPanel(name, url, icon) {
+  document.getElementById('installName').textContent = name;
+  document.getElementById('installUrl').textContent  = url;
+
+  // Draw icon on install canvas
+  const img = new Image();
+  img.onload = () => {
+    const c = document.getElementById('installIcon');
+    c.getContext('2d').drawImage(img, 0, 0, 44, 44);
+  };
+  img.src = icon;
+
+  document.getElementById('installPanel').classList.add('visible');
+  updateInstallButton();
+  window.scrollTo({ top: document.getElementById('installPanel').offsetTop - 20, behavior: 'smooth' });
+}
+
+function updateInstallButton() {
+  const btn  = document.getElementById('installBtn');
+  const hint = document.getElementById('installHint');
+  if (lastDeferredPrompt) {
+    btn.disabled = false;
+    hint.innerHTML = 'Chrome detected an installable PWA. Tap below to install.';
+  } else {
+    btn.disabled = false; // still clickable — opens the URL
+    hint.innerHTML =
+      `<strong>Open the app URL first</strong>, then Chrome menu → <strong>Add to Home Screen</strong><br>` +
+      `<a href="${document.getElementById('installUrl').textContent}" target="_blank">Open App →</a>`;
+  }
+}
+
+async function promptInstall() {
+  if (lastDeferredPrompt) {
+    lastDeferredPrompt.prompt();
+    const result = await lastDeferredPrompt.userChoice;
+    if (result.outcome === 'accepted') toast('App installed!', 'ok');
+    lastDeferredPrompt = null;
+    updateInstallButton();
+  } else {
+    const url = document.getElementById('installUrl').textContent;
+    window.open(url, '_blank');
+    toast('Open the app, then use Chrome menu → Add to Home Screen', 'ok');
+  }
+}
+
+// ════════════════════════════════════════════════
+// APP LIST
+// ════════════════════════════════════════════════
+async function renderAppList() {
+  const wrap = document.getElementById('appListWrap');
+  const apps = await dbGetAll(STORE_APPS).catch(() => []);
+
+  if (!apps.length) {
+    wrap.innerHTML = '<div class="app-list-empty">NO APPS YET — DROP A FILE ABOVE</div>';
+    return;
+  }
+
+  // Sort newest first
+  apps.sort((a, b) => b.created - a.created);
+
+  wrap.innerHTML = '';
+  const list = document.createElement('div');
+  list.className = 'app-list';
+
+  apps.forEach(app => {
+    const item = document.createElement('div');
+    item.className = 'app-item';
+
+    const iconCanvas = document.createElement('canvas');
+    iconCanvas.className = 'app-item-icon';
+    iconCanvas.width = iconCanvas.height = 40;
+    const img = new Image();
+    img.onload = () => iconCanvas.getContext('2d').drawImage(img, 0, 0, 40, 40);
+    img.src = app.icon;
+
+    const date = new Date(app.created).toLocaleDateString();
+
+    item.innerHTML = `
+      <div class="app-item-icon" id="icon-${app.slug}"></div>
+      <div class="app-item-info">
+        <div class="app-item-name">${app.name}</div>
+        <div class="app-item-meta">${formatBytes(app.size)} · ${date} · ${app.displayMode}</div>
+      </div>
+      <div class="app-item-actions">
+        <a class="app-action" href="${app.appUrl}" target="_blank">OPEN</a>
+        <button class="app-action danger" onclick="deleteApp('${app.slug}')">DELETE</button>
+      </div>
+    `;
+
+    // Draw icon
+    setTimeout(() => {
+      const slot = item.querySelector('#icon-' + app.slug);
+      if (slot) slot.replaceWith(iconCanvas);
+    }, 0);
+
+    list.appendChild(item);
+  });
+
+  wrap.appendChild(list);
+}
+
+async function deleteApp(slug) {
+  await dbDelete(STORE_APPS, slug);
+  toast('App deleted', 'ok');
+  renderAppList();
+}
+
+// ════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════
+function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'app';
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function setProgress(show, label = '', pct = 0, status = '') {
+  const wrap = document.getElementById('progressWrap');
+  if (!show) { wrap.classList.remove('visible'); return; }
+  wrap.classList.add('visible');
+  document.getElementById('progressLabel').textContent  = label;
+  document.getElementById('progressFill').style.width   = pct + '%';
+  document.getElementById('progressStatus').textContent = status;
+}
+
+let toastTimer;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className   = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ════════════════════════════════════════════════
+// DRAG & DROP
+// ════════════════════════════════════════════════
+const dropZone = document.getElementById('dropZone');
+
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  handleFile(file);
+});
+dropZone.addEventListener('click', () => document.getElementById('fileInput').click());
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  handleFile(e.target.files[0]);
+  e.target.value = '';
+});
+
+// ════════════════════════════════════════════════
+// EMOJI BUTTONS
+// ════════════════════════════════════════════════
+document.getElementById('emojiRow').addEventListener('click', e => {
+  const btn = e.target.closest('.emoji-btn');
+  if (!btn) return;
+  document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  selectedEmoji = btn.dataset.emoji;
+  updateIconPreview();
+});
+
+document.getElementById('appName').addEventListener('input', updateIconPreview);
+
+// ════════════════════════════════════════════════
+// INSTALL PROMPT
+// ════════════════════════════════════════════════
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  lastDeferredPrompt = e;
+  updateInstallButton();
+  toast('Install prompt ready', 'ok');
+});
+
+window.addEventListener('appinstalled', () => {
+  lastDeferredPrompt = null;
+  toast('App installed successfully!', 'ok');
+});
+
+// ════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════
+async function init() {
+  await openDB();
+  await registerSW();
+  injectHubManifest();
+  renderAppList();
+  updateIconPreview();
+}
+
+init();
+</script>
+</body>
+</html>
