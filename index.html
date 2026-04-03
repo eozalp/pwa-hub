@@ -444,6 +444,31 @@ main { flex: 1; padding: 40px 0 60px; }
 .toast.ok { border-color: var(--accent); color: var(--accent); }
 .toast.err { border-color: var(--danger); color: var(--danger); }
 
+.app-fallback {
+  display: none;
+  position: fixed; inset: 0;
+  background: var(--bg);
+  z-index: 9999;
+  flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding: 40px;
+}
+.app-fallback.visible { display: flex; }
+.app-fallback-title {
+  font-family: var(--sans);
+  font-size: 22px; font-weight: 800;
+  color: var(--danger); margin-bottom: 12px;
+}
+.app-fallback-sub {
+  font-size: 12px; color: var(--muted);
+  letter-spacing: 0.1em; line-height: 1.8;
+  max-width: 380px; margin-bottom: 20px;
+}
+.app-fallback a {
+  color: var(--accent2); text-decoration: none;
+  border-bottom: 1px solid var(--accent2);
+}
+
 /* ── FOOTER ── */
 footer {
   padding: 20px 0;
@@ -455,6 +480,37 @@ footer {
 }
 footer a { color: var(--muted); text-decoration: none; }
 footer a:hover { color: var(--accent); }
+
+/* ── SETUP BANNER ── */
+.setup-banner {
+  background: rgba(255,68,68,0.06);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  display: none;
+}
+.setup-banner.visible { display: block; }
+.setup-banner-title {
+  font-family: var(--sans);
+  font-size: 13px; font-weight: 700;
+  color: var(--danger);
+  margin-bottom: 6px;
+  letter-spacing: 0.05em;
+}
+.setup-banner-body {
+  font-size: 11px; color: var(--muted);
+  letter-spacing: 0.05em; line-height: 1.8;
+  margin-bottom: 12px;
+}
+.setup-banner-body code {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 3px; padding: 1px 5px;
+  font-family: var(--mono); color: var(--accent);
+  font-size: 11px;
+}
+.setup-banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ── HOW IT WORKS ── */
 .how { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 40px; }
@@ -477,6 +533,28 @@ footer a:hover { color: var(--accent); }
   </header>
 
   <main>
+
+    <!-- APP FALLBACK OVERLAY: shown when hub loads at ?app= URL (GH Pages 404 fallback) -->
+    <div class="app-fallback" id="appFallback">
+      <div class="app-fallback-title">⚠ SERVICE WORKER NOT INSTALLED</div>
+      <div class="app-fallback-sub">
+        Bu URL bir PWA Hub uygulamasına aittir, ancak Service Worker henüz kurulu değil.<br><br>
+        Lütfen önce <a href="./">PWA Hub</a> sayfasını açın ve <code>sw.js</code> deploy edildiğinden emin olun.
+      </div>
+      <a href="./" style="padding:10px 22px;background:var(--accent);color:#080808;border-radius:var(--radius);font-family:var(--sans);font-weight:700;font-size:13px;text-decoration:none;">← PWA Hub'a Dön</a>
+    </div>
+
+    <!-- SETUP BANNER -->
+    <div class="setup-banner" id="setupBanner">
+      <div class="setup-banner-title">⚠ KURULUM GEREKLİ — sw.js DEPLOY EDİLMEDİ</div>
+      <div class="setup-banner-body">
+        GitHub Pages'da <code>blob:</code> URL ile Service Worker kaydedilemez.<br>
+        <code>sw.js</code> dosyasını indirip <code>pwa-hub.html</code> ile <strong>aynı klasöre</strong> deploy edin, sonra sayfayı yenileyin.
+      </div>
+      <div class="setup-banner-actions">
+        <button class="drop-btn" onclick="downloadSW()" style="color:var(--accent);border-color:var(--accent)">⬇ sw.js İndir</button>
+      </div>
+    </div>
 
     <!-- HOW IT WORKS -->
     <div class="how">
@@ -508,7 +586,7 @@ footer a:hover { color: var(--accent); }
       <span class="drop-icon">⬡</span>
       <div class="drop-title">Drop HTML file here</div>
       <div class="drop-sub">or click to browse — any self-contained .html file</div>
-      <button class="drop-btn" onclick="document.getElementById('fileInput').click()">Browse File</button>
+      <button class="drop-btn" onclick="event.stopPropagation();document.getElementById('fileInput').click()">Browse File</button>
     </div>
     <input type="file" id="fileInput" accept=".html,.htm">
 
@@ -681,13 +759,16 @@ function dbDelete(store, key) {
 // ════════════════════════════════════════════════
 // SERVICE WORKER (inline blob)
 // ════════════════════════════════════════════════
-const SW_CODE = `
+// SW_CODE is NOT a template literal — it's a plain string so it can be
+// saved as a standalone sw.js. BASE_PATH is derived from self.location at runtime.
+const SW_CODE = `'use strict';
 const DB_NAME    = 'pwahub';
 const DB_VERSION = 1;
 const STORE_APPS = 'apps';
 const CACHE_NAME = 'pwahub-shell-v1';
-const HUB_URL    = '${HUB_URL}';
-const BASE_PATH  = '${BASE_PATH}';
+// Derive paths from SW script location — works regardless of deployment directory
+const BASE_PATH  = new URL('./', self.location).href;
+const MANIFEST_PATH = BASE_PATH + 'manifest.json';
 
 let db;
 function openDB() {
@@ -695,9 +776,8 @@ function openDB() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = e => {
       const d = e.target.result;
-      if (!d.objectStoreNames.contains(STORE_APPS)) {
+      if (!d.objectStoreNames.contains(STORE_APPS))
         d.createObjectStore(STORE_APPS, { keyPath: 'slug' });
-      }
     };
     req.onsuccess = e => { db = e.target.result; res(db); };
     req.onerror   = e => rej(e.target.error);
@@ -715,7 +795,7 @@ function dbGet(key) {
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME)
-      .then(c => c.add(new Request(HUB_URL, { cache: 'reload' })))
+      .then(c => c.add(new Request(BASE_PATH, { cache: 'reload' })))
       .then(() => self.skipWaiting())
   );
 });
@@ -730,33 +810,64 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  const appSlug = url.searchParams.get('app');
+
+  // Hub manifest
+  if (e.request.url.startsWith(MANIFEST_PATH) && !appSlug) {
+    e.respondWith(
+      caches.match(MANIFEST_PATH).then(r => r || new Response('{}', {
+        headers: { 'Content-Type': 'application/manifest+json' }
+      }))
+    );
+    return;
+  }
+
+  // Generated app manifest: /manifest.json?app=slug
+  if (e.request.url.startsWith(MANIFEST_PATH) && appSlug) {
+    e.respondWith(
+      openDB().then(() => dbGet(appSlug)).then(app => {
+        if (!app) return new Response('{}', { headers: { 'Content-Type': 'application/manifest+json' } });
+        const m = {
+          name: app.name,
+          short_name: app.shortName || app.name,
+          start_url: BASE_PATH + '?app=' + app.slug,
+          display: app.displayMode || 'standalone',
+          background_color: '#000000',
+          theme_color: '#000000',
+          icons: [
+            { src: app.icon, sizes: '192x192', type: 'image/png', purpose: 'any' },
+            { src: app.icon, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+          ]
+        };
+        return new Response(JSON.stringify(m), {
+          headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store' }
+        });
+      }).catch(() => new Response('{}', { headers: { 'Content-Type': 'application/manifest+json' } }))
+    );
+    return;
+  }
 
   // Hub shell — serve from cache
-  if (e.request.url === HUB_URL || e.request.destination === 'document' && url.pathname === new URL(HUB_URL).pathname && !url.searchParams.has('app')) {
+  if (!appSlug && e.request.destination === 'document' &&
+      (url.pathname === new URL(BASE_PATH).pathname ||
+       url.pathname === new URL(BASE_PATH).pathname + 'index.html' ||
+       url.pathname.endsWith('/pwa-hub.html'))) {
     e.respondWith(
-      caches.match(HUB_URL).then(cached => cached || fetch(e.request).then(r => {
-        caches.open(CACHE_NAME).then(c => c.put(HUB_URL, r.clone()));
+      caches.match(BASE_PATH).then(cached => cached || fetch(e.request).then(r => {
+        caches.open(CACHE_NAME).then(c => c.put(BASE_PATH, r.clone()));
         return r;
       }))
     );
     return;
   }
 
-  // App requests: ?app=slug or /app/slug/
-  const appSlug = url.searchParams.get('app') || (() => {
-    const m = url.pathname.match(/\\/app\\/([^\\/]+)\\//);
-    return m ? m[1] : null;
-  })();
-
+  // Generated app: ?app=slug
   if (appSlug) {
     e.respondWith(
       openDB().then(() => dbGet(appSlug)).then(app => {
         if (!app) return new Response('<h1>App not found</h1>', { headers: { 'Content-Type': 'text/html' } });
         return new Response(app.html, {
-          headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-store'
-          }
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
         });
       }).catch(() => new Response('<h1>Error loading app</h1>', { headers: { 'Content-Type': 'text/html' } }))
     );
@@ -775,29 +886,33 @@ self.addEventListener('fetch', e => {
   }
   // Everything else — network
 });
+
+self.addEventListener('message', e => {
+  if (!e.data) return;
+  if (e.data.type === 'CACHE_APP') {
+    console.log('[SW] CACHE_APP ack', e.data.url);
+  }
+});
 `;
 
 let swRegistration = null;
 
 async function registerSW() {
   if (!('serviceWorker' in navigator)) {
-    setSwStatus(false, 'SERVICE WORKER NOT SUPPORTED');
-    return;
+    setSwStatus(false, 'SERVICE WORKER NOT SUPPORTED'); return;
   }
   if (location.protocol === 'file:') {
-    setSwStatus(false, 'NEEDS HTTPS — USE GITHUB PAGES');
-    return;
+    setSwStatus(false, 'NEEDS HTTPS — USE GITHUB PAGES'); return;
   }
   try {
-    const blob = new Blob([SW_CODE], { type: 'application/javascript' });
-    const swUrl = URL.createObjectURL(blob);
-    swRegistration = await navigator.serviceWorker.register(swUrl, { scope: BASE_PATH });
-    URL.revokeObjectURL(swUrl);
+    // Only ./sw.js works on GitHub Pages — blob: URLs are rejected as SW scripts.
+    swRegistration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
     setSwStatus(true, 'SERVICE WORKER ACTIVE');
     console.log('[PWAHUB] SW registered, scope:', swRegistration.scope);
   } catch (err) {
-    setSwStatus(false, 'SW REGISTRATION FAILED');
-    console.error('[PWAHUB] SW error:', err);
+    setSwStatus(false, 'DEPLOY sw.js TO ACTIVATE');
+    console.warn('[PWAHUB] ./sw.js not found — download and deploy it:', err.message);
+    document.getElementById('setupBanner').classList.add('visible');
   }
 }
 
@@ -815,14 +930,23 @@ function injectHubManifest() {
     name: 'PWA Hub',
     short_name: 'PWA Hub',
     description: 'Turn any HTML into an installable PWA',
-    start_url: HUB_URL,
+    start_url: BASE_PATH,
     display: 'standalone',
     background_color: '#080808',
     theme_color: '#080808',
     icons: [{ src: icon, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }]
   };
-  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
-  document.getElementById('hubManifest').href = URL.createObjectURL(blob);
+  // Use real path URL — Chrome 93+ rejects blob:/data: manifest URLs → no beforeinstallprompt
+  const manifestUrl = BASE_PATH + 'manifest.json';
+  document.getElementById('hubManifest').href = manifestUrl;
+  // Store in SW cache so the SW can serve it when fetched
+  if ('caches' in window) {
+    caches.open('pwahub-shell-v1').then(c =>
+      c.put(manifestUrl, new Response(JSON.stringify(manifest), {
+        headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store' }
+      }))
+    ).catch(() => {});
+  }
 }
 
 // ════════════════════════════════════════════════
@@ -946,6 +1070,12 @@ let lastGeneratedSlug  = null;
 async function generatePWA() {
   if (!loadedHTML) { toast('No file loaded', 'err'); return; }
 
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  try { await _generatePWA(); } finally { btn.disabled = false; }
+}
+
+async function _generatePWA() {
   const name        = document.getElementById('appName').value.trim() || 'My App';
   const shortName   = document.getElementById('appShortName').value.trim() || name.slice(0, 12);
   const displayMode = document.getElementById('appDisplay').value;
@@ -964,29 +1094,18 @@ async function generatePWA() {
   const icon512 = generateIcon(label, bg, fg, 512);
   const icon192 = generateIcon(label, bg, fg, 192);
 
-  // Build manifest
-  const manifest = {
-    name, short_name: shortName,
-    start_url: appUrl,
-    display: displayMode,
-    orientation,
-    background_color: '#000000',
-    theme_color: '#000000',
-    icons: [
-      { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-    ]
-  };
+  // Manifest URL — served by SW from /manifest.json?app=slug
+  // Chrome 93+ rejects data: and blob: manifest URLs; must use a real path.
+  const manifestUrl = BASE_PATH + 'manifest.json?app=' + slug;
 
   // Inject PWA meta into the source HTML
-  const manifestBlob   = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(manifest));
   const metaInjection  = `
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="${shortName}">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#000000">
-<link rel="manifest" href="${manifestBlob}">
+<link rel="manifest" href="${manifestUrl}">
 <link rel="apple-touch-icon" href="${icon192}">
 `;
 
@@ -1007,6 +1126,7 @@ async function generatePWA() {
       name,
       shortName,
       displayMode,
+      orientation,
       appUrl,
       icon: icon192,
       html: finalHTML,
@@ -1227,11 +1347,45 @@ window.addEventListener('appinstalled', () => {
 // INIT
 // ════════════════════════════════════════════════
 async function init() {
+  // Guard: if hub loads at ?app= URL, GitHub Pages served us as 404 fallback.
+  // The SW isn't active yet — don't try to register it here, just show the error.
+  if (new URLSearchParams(location.search).has('app')) {
+    document.getElementById('appFallback').classList.add('visible');
+    return;
+  }
+
   await openDB();
   await registerSW();
-  injectHubManifest();
+
+  // Re-inject manifest after SW is ready so Chrome can see it
+  if (navigator.serviceWorker.controller) {
+    injectHubManifest();
+  } else {
+    // SW just installed — wait for it to claim, then inject manifest
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      injectHubManifest();
+    });
+    injectHubManifest(); // also inject now (will cache for next load)
+  }
+
   renderAppList();
   updateIconPreview();
+}
+
+// ════════════════════════════════════════════════
+// SW DOWNLOAD — standalone sw.js for GitHub Pages
+// ════════════════════════════════════════════════
+function downloadSW() {
+  // SW_CODE is already the correct standalone content (no template interpolation)
+  const blob = new Blob([SW_CODE], { type: 'application/javascript' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sw.js';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('sw.js indirildi — pwa-hub.html ile aynı klasöre koyun', 'ok');
 }
 
 init();
