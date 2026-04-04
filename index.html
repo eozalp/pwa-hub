@@ -414,10 +414,11 @@ main { flex: 1; padding: 36px 0 80px; }
   background: #111;
 }
 
-.app-item-icon { width: 42px; height: 42px; border-radius: 10px; flex-shrink: 0; }
+.app-item-icon { width: 56px; height: 56px; border-radius: 13px; flex-shrink: 0; box-shadow: 0 2px 12px rgba(0,0,0,0.4); }
 .app-item-info { flex: 1; min-width: 0; }
-.app-item-name { font-family: var(--sans); font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.app-item-meta { font-size: 9px; color: var(--muted); letter-spacing: 0.08em; margin-top: 3px; }
+.app-item-name { font-family: var(--sans); font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; color: #f0f0f0; }
+.app-item-size { font-family: var(--mono); font-size: 10px; color: var(--accent); letter-spacing: 0.06em; margin-top: 2px; font-weight: 500; }
+.app-item-meta { font-size: 9px; color: var(--muted); letter-spacing: 0.08em; margin-top: 1px; }
 
 .app-item-actions { display: flex; gap: 5px; flex-shrink: 0; }
 .app-action {
@@ -446,9 +447,61 @@ main { flex: 1; padding: 36px 0 80px; }
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
+
+/* ── SEARCH BAR ── */
+.app-search-wrap {
+  position: relative;
+  margin-bottom: 14px;
+}
+.app-search-wrap::before {
+  content: '⌕';
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  color: var(--muted);
+  pointer-events: none;
+  line-height: 1;
+}
+.app-search {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  padding: 10px 12px 10px 36px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  -webkit-appearance: none;
+}
+.app-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(200,255,0,0.08);
+}
+.app-search::placeholder { color: var(--dim); }
+.app-search-clear {
+  display: none;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+}
+.app-search-clear:hover { color: var(--text); }
+.app-search-wrap.has-value .app-search-clear { display: block; }
 .toolbar-btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 6px 12px;
@@ -777,6 +830,10 @@ footer a:hover { color: var(--accent); }
       <input type="file" id="importInput" accept=".pwahub,.json" style="display:none">
       <span class="toolbar-spacer"></span>
     </div>
+    <div class="app-search-wrap" id="appSearchWrap">
+      <input class="app-search" id="appSearch" type="search" placeholder="Filter apps…" autocomplete="off" spellcheck="false">
+      <button class="app-search-clear" id="appSearchClear" onclick="clearAppSearch()" title="Clear">✕</button>
+    </div>
     <div id="appListWrap"></div>
 
     <!-- COLLISION MODAL -->
@@ -902,9 +959,11 @@ function dbGet(key) {
 }
 
 self.addEventListener('install', e => {
+  // Use .catch() so a missing index.html on GitHub Pages never aborts SW activation.
+  // The hub shell is cached properly on first navigation or via CACHE_HUB message.
   e.waitUntil(
     caches.open(CACHE_NAME)
-      .then(c => c.add(new Request(BASE_PATH, { cache: 'reload' })))
+      .then(c => c.add(new Request(BASE_PATH, { cache: 'reload' })).catch(() => {}))
       .then(() => self.skipWaiting())
   );
 });
@@ -1001,6 +1060,13 @@ self.addEventListener('message', e => {
   if (e.data.type === 'CACHE_APP') {
     console.log('[SW] CACHE_APP ack', e.data.url);
   }
+  // Client tells SW the real hub file URL (e.g. /pwa-hub.html, not just /dir/).
+  // Needed on GitHub Pages when the file isn't named index.html.
+  if (e.data.type === 'CACHE_HUB' && e.data.url) {
+    caches.open(CACHE_NAME).then(c =>
+      c.add(new Request(e.data.url, { cache: 'reload' })).catch(() => {})
+    );
+  }
 });
 `;
 
@@ -1018,6 +1084,23 @@ async function registerSW() {
     swRegistration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
     setSwStatus(true, 'SERVICE WORKER ACTIVE');
     console.log('[PWAHUB] SW registered, scope:', swRegistration.scope);
+
+    // Tell the SW the exact hub file URL so it can cache it regardless of filename.
+    // This matters on GitHub Pages when the file isn't served as index.html.
+    const tellSW = reg => {
+      const sw = reg.active || reg.installing || reg.waiting;
+      if (sw) sw.postMessage({ type: 'CACHE_HUB', url: HUB_URL });
+    };
+    if (swRegistration.active) {
+      tellSW(swRegistration);
+    } else {
+      swRegistration.addEventListener('updatefound', () => {
+        const sw = swRegistration.installing;
+        sw && sw.addEventListener('statechange', () => {
+          if (sw.state === 'activated') tellSW(swRegistration);
+        });
+      });
+    }
   } catch (err) {
     setSwStatus(false, 'DEPLOY sw.js TO ACTIVATE');
     console.warn('[PWAHUB] ./sw.js not found — download and deploy it:', err.message);
@@ -1039,7 +1122,7 @@ function injectHubManifest() {
     name: 'PWA Hub',
     short_name: 'PWA Hub',
     description: 'Turn any HTML into an installable PWA',
-    start_url: BASE_PATH,
+    start_url: HUB_URL,
     display: 'standalone',
     background_color: '#080808',
     theme_color: '#080808',
@@ -1317,31 +1400,49 @@ async function promptInstall() {
 // ════════════════════════════════════════════════
 // APP LIST
 // ════════════════════════════════════════════════
-async function renderAppList() {
-  const wrap = document.getElementById('appListWrap');
-  const apps = await dbGetAll(STORE_APPS).catch(() => []);
+let _allApps = [];
 
-  if (!apps.length) {
+async function renderAppList() {
+  _allApps = await dbGetAll(STORE_APPS).catch(() => []);
+  _allApps.sort((a, b) => b.created - a.created);
+
+  // Show/hide search bar
+  const searchWrap = document.getElementById('appSearchWrap');
+  if (searchWrap) searchWrap.style.display = _allApps.length ? '' : 'none';
+
+  const q = (document.getElementById('appSearch')?.value || '').trim().toLowerCase();
+  renderFilteredList(q);
+}
+
+function renderFilteredList(query) {
+  const wrap = document.getElementById('appListWrap');
+  const filtered = query
+    ? _allApps.filter(a => a.name.toLowerCase().includes(query))
+    : _allApps;
+
+  if (!_allApps.length) {
     wrap.innerHTML = '<div class="app-list-empty">NO APPS YET — DROP A FILE ABOVE</div>';
     return;
   }
 
-  // Sort newest first
-  apps.sort((a, b) => b.created - a.created);
+  if (!filtered.length) {
+    wrap.innerHTML = '<div class="app-list-empty">NO APPS MATCH "' + query.toUpperCase() + '"</div>';
+    return;
+  }
 
   wrap.innerHTML = '';
   const list = document.createElement('div');
   list.className = 'app-list';
 
-  apps.forEach(app => {
+  filtered.forEach(app => {
     const item = document.createElement('div');
     item.className = 'app-item';
 
     const iconCanvas = document.createElement('canvas');
     iconCanvas.className = 'app-item-icon';
-    iconCanvas.width = iconCanvas.height = 40;
+    iconCanvas.width = iconCanvas.height = 56;
     const img = new Image();
-    img.onload = () => iconCanvas.getContext('2d').drawImage(img, 0, 0, 40, 40);
+    img.onload = () => iconCanvas.getContext('2d').drawImage(img, 0, 0, 56, 56);
     img.src = app.icon;
 
     const date = new Date(app.created).toLocaleDateString();
@@ -1350,7 +1451,8 @@ async function renderAppList() {
       <div class="app-item-icon" id="icon-${app.slug}"></div>
       <div class="app-item-info">
         <div class="app-item-name">${app.name}</div>
-        <div class="app-item-meta">${formatBytes(app.size)} · ${date} · ${app.displayMode}</div>
+        <div class="app-item-size">${formatBytes(app.size)}</div>
+        <div class="app-item-meta">${date} · ${app.displayMode}</div>
       </div>
       <div class="app-item-actions">
         <a class="app-action" href="${app.appUrl}" target="_blank">OPEN</a>
@@ -1483,13 +1585,43 @@ async function bundleAllAsHTML() {
   try {
     const apps = await dbGetAll(STORE_APPS);
     if (!apps.length) { toast('No apps to bundle', 'err'); return; }
+
+    // Fetch the hub's own source — this is what we ship as the bundle.
+    let hubHtml;
+    try {
+      const res = await fetch(location.href.split('?')[0].split('#')[0], { cache: 'reload' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      hubHtml = await res.text();
+    } catch (e) {
+      toast('Could not fetch hub source: ' + e.message, 'err');
+      return;
+    }
+
+    // Strip any previous PWAHUB_SEED block so re-bundling doesn't double-inject.
+    hubHtml = hubHtml.replace(/<!--PWAHUB_SEED_START-->[\s\S]*?<!--PWAHUB_SEED_END-->\n?/g, '');
+
+    // Strip the dynamic manifest link — recipient won't have a SW yet.
+    hubHtml = stripHubManifest(hubHtml);
+
+    // Strip app manifest links injected into individual app HTML blobs.
     const cleaned = apps.map(a => ({ ...a, html: stripHubManifest(a.html) }));
-    const html = buildLauncherHTML(cleaned);
+
+    // Embed apps as a seed variable — injected just before </body>.
+    const seedScript =
+      '<!--PWAHUB_SEED_START-->\n' +
+      '<scr' + 'ipt>var PWAHUB_SEED=' + safeJSON(cleaned) + ';</scr' + 'ipt>\n' +
+      '<!--PWAHUB_SEED_END-->\n';
+
+    hubHtml = hubHtml.replace(/<\/body>/i, seedScript + '</body>');
+
     const filename = 'pwahub-bundle-' + new Date().toISOString().slice(0,10) + '.html';
-    triggerDownload(html, filename, 'text/html');
-    toast('Bundled ' + apps.length + ' app' + (apps.length > 1 ? 's' : '') + ' into HTML', 'ok');
-  } catch (err) { toast('Bundle failed: ' + err.message, 'err');
-  } finally { btn.disabled = false; }
+    triggerDownload(hubHtml, filename, 'text/html');
+    toast('Bundled ' + apps.length + ' app' + (apps.length > 1 ? 's' : '') + ' into PWA Hub replica', 'ok');
+  } catch (err) {
+    toast('Bundle failed: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function safeJSON(data) {
@@ -1745,6 +1877,22 @@ document.getElementById('importInput').addEventListener('change', e => {
   e.target.value = '';
 });
 
+// ── Search
+document.getElementById('appSearch').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  const wrap = document.getElementById('appSearchWrap');
+  wrap.classList.toggle('has-value', q.length > 0);
+  renderFilteredList(q);
+});
+
+function clearAppSearch() {
+  const input = document.getElementById('appSearch');
+  input.value = '';
+  document.getElementById('appSearchWrap').classList.remove('has-value');
+  renderFilteredList('');
+  input.focus();
+}
+
 // Close modal on backdrop click
 document.getElementById('collisionModal').addEventListener('click', e => {
   if (e.target === document.getElementById('collisionModal')) resolveCollision('skip');
@@ -1762,6 +1910,12 @@ async function init() {
   }
 
   await openDB();
+
+  // If this is a pre-bundled copy, seed IndexedDB with embedded apps.
+  if (typeof PWAHUB_SEED !== 'undefined' && Array.isArray(PWAHUB_SEED) && PWAHUB_SEED.length) {
+    await seedApps(PWAHUB_SEED);
+  }
+
   await registerSW();
 
   // Re-inject manifest after SW is ready so Chrome can see it
@@ -1777,6 +1931,40 @@ async function init() {
 
   renderAppList();
   updateIconPreview();
+}
+
+// Seed IndexedDB from a bundled PWAHUB_SEED array.
+// Only writes apps whose slug doesn't already exist — never overwrites.
+async function seedApps(seed) {
+  try {
+    const existing = await dbGetAll(STORE_APPS).catch(() => []);
+    const existingSlugs = new Set(existing.map(a => a.slug));
+    let seeded = 0;
+    for (const app of seed) {
+      if (!app.slug || !app.name || !app.html) continue;
+      if (existingSlugs.has(app.slug)) continue;
+
+      // Rewrite appUrl to current server — the seed carries the original server's URL.
+      const appUrl = BASE_PATH + '?app=' + app.slug;
+
+      // Re-inject manifest link pointing to the current server.
+      // stripHubManifest removed it at bundle time to avoid stale URLs.
+      const manifestUrl = BASE_PATH + 'manifest.json?app=' + app.slug;
+      const manifestTag = '<link rel="manifest" href="' + manifestUrl + '">';
+      let html = app.html;
+      if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/(<head[^>]*>)/i, '$1' + manifestTag);
+      } else {
+        html = manifestTag + html;
+      }
+
+      await dbPut(STORE_APPS, { ...app, html, appUrl });
+      seeded++;
+    }
+    if (seeded) toast(seeded + ' app' + (seeded > 1 ? 's' : '') + ' loaded from bundle', 'ok');
+  } catch (e) {
+    console.warn('[PWAHUB] seedApps failed:', e);
+  }
 }
 
 // ════════════════════════════════════════════════
