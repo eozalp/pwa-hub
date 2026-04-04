@@ -386,8 +386,12 @@ main { flex: 1; padding: 36px 0 80px; }
 
 .install-hint a { color: var(--accent2); text-decoration: none; }
 
-/* ── APP LIST ── */
-.app-list { display: flex; flex-direction: column; gap: 4px; }
+/* ── APP GRID ── */
+.app-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
+}
 .app-list-empty {
   padding: 36px 20px;
   text-align: center;
@@ -397,49 +401,69 @@ main { flex: 1; padding: 36px 0 80px; }
   background: var(--surface);
   border: 1px dashed var(--border);
   border-radius: var(--radius);
+  grid-column: 1 / -1;
 }
 
 .app-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 13px 16px;
+  padding: 18px 12px 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   transition: border-color 0.15s, background 0.15s;
 }
-.app-item:hover {
-  border-color: var(--border2);
-  background: #111;
+.app-item:hover { border-color: var(--border2); background: #111; }
+
+.app-item-icon {
+  width: 64px; height: 64px;
+  border-radius: 16px;
+  display: block;
+  object-fit: cover;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
+.app-item-info { width: 100%; text-align: center; min-width: 0; flex: 1; }
+.app-item-name {
+  font-family: var(--sans);
+  font-size: 13px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  letter-spacing: -0.01em; color: #f0f0f0;
+}
+.app-item-size { font-family: var(--mono); font-size: 9px; color: var(--accent); letter-spacing: 0.06em; margin-top: 3px; }
+.app-item-meta { font-size: 8px; color: var(--muted); letter-spacing: 0.05em; margin-top: 2px; }
 
-.app-item-icon { width: 56px; height: 56px; border-radius: 13px; flex-shrink: 0; box-shadow: 0 2px 12px rgba(0,0,0,0.4); }
-.app-item-info { flex: 1; min-width: 0; }
-.app-item-name { font-family: var(--sans); font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; color: #f0f0f0; }
-.app-item-size { font-family: var(--mono); font-size: 10px; color: var(--accent); letter-spacing: 0.06em; margin-top: 2px; font-weight: 500; }
-.app-item-meta { font-size: 9px; color: var(--muted); letter-spacing: 0.08em; margin-top: 1px; }
+.app-item-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: 100%;
+  margin-top: 12px;
+}
+.app-item-actions .open-btn { grid-column: 1 / -1; }
 
-.app-item-actions { display: flex; gap: 5px; flex-shrink: 0; }
 .app-action {
-  padding: 5px 9px;
-  border: 1px solid transparent;
+  padding: 6px 4px;
+  border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--bg);
   font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-size: 8px;
+  letter-spacing: 0.1em;
   color: var(--muted);
   cursor: pointer;
   text-transform: uppercase;
   transition: all 0.12s;
   text-decoration: none;
-  display: inline-flex; align-items: center;
+  display: flex; align-items: center; justify-content: center;
 }
-.app-action:hover         { border-color: var(--border2); color: var(--text); }
-.app-action.share:hover   { border-color: var(--accent2); color: var(--accent2); background: rgba(0,255,204,0.04); }
-.app-action.export:hover  { border-color: var(--accent);  color: var(--accent);  background: rgba(200,255,0,0.04); }
-.app-action.danger:hover  { border-color: var(--danger);  color: var(--danger);  background: rgba(255,68,68,0.04); }
+.app-action:hover          { border-color: var(--border2); color: var(--text); }
+.app-action.open-btn:hover { border-color: var(--accent);  color: var(--accent);  background: rgba(200,255,0,0.05); }
+.app-action.share:hover    { border-color: var(--accent2); color: var(--accent2); background: rgba(0,255,204,0.05); }
+.app-action.export:hover   { border-color: var(--accent);  color: var(--accent);  background: rgba(200,255,0,0.05); }
+.app-action.danger:hover   { border-color: var(--danger);  color: var(--danger);  background: rgba(255,68,68,0.05); }
 
 
 /* ── EXPORT / IMPORT TOOLBAR ── */
@@ -873,11 +897,14 @@ const HUB_URL    = location.href.split('?')[0].split('#')[0];
 const BASE_PATH  = HUB_URL.substring(0, HUB_URL.lastIndexOf('/') + 1);
 
 // ════════════════════════════════════════════════
-// IDB
+// IDB  (with in-memory fallback for local / content:// files)
 // ════════════════════════════════════════════════
 let db;
+let _memStore = null; // non-null → IndexedDB unavailable, use memory
+
 function openDB() {
   return new Promise((res, rej) => {
+    if (!window.indexedDB) { rej(new Error('IndexedDB not available')); return; }
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = e => {
       const d = e.target.result;
@@ -891,6 +918,11 @@ function openDB() {
 }
 
 function dbPut(store, val) {
+  if (_memStore) {
+    const idx = _memStore.findIndex(r => r.slug === val.slug);
+    if (idx >= 0) _memStore[idx] = val; else _memStore.push(val);
+    return Promise.resolve(val.slug);
+  }
   return new Promise((res, rej) => {
     const tx = db.transaction(store, 'readwrite');
     tx.objectStore(store).put(val).onsuccess = e => res(e.target.result);
@@ -899,6 +931,7 @@ function dbPut(store, val) {
 }
 
 function dbGet(store, key) {
+  if (_memStore) return Promise.resolve(_memStore.find(r => r.slug === key) || undefined);
   return new Promise((res, rej) => {
     const tx = db.transaction(store, 'readonly');
     tx.objectStore(store).get(key).onsuccess = e => res(e.target.result);
@@ -907,6 +940,7 @@ function dbGet(store, key) {
 }
 
 function dbGetAll(store) {
+  if (_memStore) return Promise.resolve([..._memStore]);
   return new Promise((res, rej) => {
     const tx = db.transaction(store, 'readonly');
     tx.objectStore(store).getAll().onsuccess = e => res(e.target.result);
@@ -915,6 +949,7 @@ function dbGetAll(store) {
 }
 
 function dbDelete(store, key) {
+  if (_memStore) { _memStore = _memStore.filter(r => r.slug !== key); return Promise.resolve(); }
   return new Promise((res, rej) => {
     const tx = db.transaction(store, 'readwrite');
     tx.objectStore(store).delete(key).onsuccess = () => res();
@@ -1438,35 +1473,23 @@ function renderFilteredList(query) {
     const item = document.createElement('div');
     item.className = 'app-item';
 
-    const iconCanvas = document.createElement('canvas');
-    iconCanvas.className = 'app-item-icon';
-    iconCanvas.width = iconCanvas.height = 56;
-    const img = new Image();
-    img.onload = () => iconCanvas.getContext('2d').drawImage(img, 0, 0, 56, 56);
-    img.src = app.icon;
-
     const date = new Date(app.created).toLocaleDateString();
+    const safeName = app.name.replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+    const esc = s => s.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
-    item.innerHTML = `
-      <div class="app-item-icon" id="icon-${app.slug}"></div>
-      <div class="app-item-info">
-        <div class="app-item-name">${app.name}</div>
-        <div class="app-item-size">${formatBytes(app.size)}</div>
-        <div class="app-item-meta">${date} · ${app.displayMode}</div>
-      </div>
-      <div class="app-item-actions">
-        <a class="app-action" href="${app.appUrl}" target="_blank">OPEN</a>
-        <button class="app-action share" onclick="shareAppAsHTML('${app.slug}')">SHARE</button>
-        <button class="app-action export" onclick="exportOneApp('${app.slug}')">EXPORT</button>
-        <button class="app-action danger" onclick="deleteApp('${app.slug}')">DELETE</button>
-      </div>
-    `;
-
-    // Draw icon
-    setTimeout(() => {
-      const slot = item.querySelector('#icon-' + app.slug);
-      if (slot) slot.replaceWith(iconCanvas);
-    }, 0);
+    item.innerHTML =
+      '<img class="app-item-icon" src="' + app.icon + '" alt="">' +
+      '<div class="app-item-info">' +
+        '<div class="app-item-name">' + safeName + '</div>' +
+        '<div class="app-item-size">' + formatBytes(app.size) + '</div>' +
+        '<div class="app-item-meta">' + date + '</div>' +
+      '</div>' +
+      '<div class="app-item-actions">' +
+        '<a class="app-action open-btn" href="' + app.appUrl + '" target="_blank">OPEN</a>' +
+        '<button class="app-action share"  onclick="shareAppAsHTML(\'' + esc(app.slug) + '\')">SHARE</button>' +
+        '<button class="app-action export" onclick="exportOneApp(\'' + esc(app.slug) + '\')">EXPORT</button>' +
+        '<button class="app-action danger" onclick="deleteApp(\'' + esc(app.slug) + '\')">DELETE</button>' +
+      '</div>';
 
     list.appendChild(item);
   });
@@ -1586,37 +1609,15 @@ async function bundleAllAsHTML() {
     const apps = await dbGetAll(STORE_APPS);
     if (!apps.length) { toast('No apps to bundle', 'err'); return; }
 
-    // Fetch the hub's own source — this is what we ship as the bundle.
-    let hubHtml;
-    try {
-      const res = await fetch(location.href.split('?')[0].split('#')[0], { cache: 'reload' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      hubHtml = await res.text();
-    } catch (e) {
-      toast('Could not fetch hub source: ' + e.message, 'err');
-      return;
-    }
-
-    // Strip any previous PWAHUB_SEED block so re-bundling doesn't double-inject.
-    hubHtml = hubHtml.replace(/<!--PWAHUB_SEED_START-->[\s\S]*?<!--PWAHUB_SEED_END-->\n?/g, '');
-
-    // Strip the dynamic manifest link — recipient won't have a SW yet.
-    hubHtml = stripHubManifest(hubHtml);
-
-    // Strip app manifest links injected into individual app HTML blobs.
     const cleaned = apps.map(a => ({ ...a, html: stripHubManifest(a.html) }));
 
-    // Embed apps as a seed variable — injected just before </body>.
-    const seedScript =
-      '<!--PWAHUB_SEED_START-->\n' +
-      '<scr' + 'ipt>var PWAHUB_SEED=' + safeJSON(cleaned) + ';</scr' + 'ipt>\n' +
-      '<!--PWAHUB_SEED_END-->\n';
-
-    hubHtml = hubHtml.replace(/<\/body>/i, seedScript + '</body>');
+    // Build a self-contained standalone launcher — no SW, no IndexedDB, no server.
+    // Works when opened as a local file, content:// URI, or any origin.
+    const launcherHtml = buildLauncherHTML(cleaned);
 
     const filename = 'pwahub-bundle-' + new Date().toISOString().slice(0,10) + '.html';
-    triggerDownload(hubHtml, filename, 'text/html');
-    toast('Bundled ' + apps.length + ' app' + (apps.length > 1 ? 's' : '') + ' into PWA Hub replica', 'ok');
+    triggerDownload(launcherHtml, filename, 'text/html');
+    toast('Bundled ' + apps.length + ' app' + (apps.length > 1 ? 's' : '') + ' into launcher', 'ok');
   } catch (err) {
     toast('Bundle failed: ' + err.message, 'err');
   } finally {
@@ -1909,9 +1910,17 @@ async function init() {
     return;
   }
 
-  await openDB();
+  // Try to open IndexedDB; fall back to in-memory store when not available
+  // (e.g. opened as a local file via content:// or file://).
+  try {
+    await openDB();
+  } catch (e) {
+    _memStore = [];
+    console.warn('[PWAHUB] IndexedDB unavailable, using in-memory store:', e.message);
+    toast('Memory mode — apps reset on reload. Use Bundle/Export to save.', 'ok');
+  }
 
-  // If this is a pre-bundled copy, seed IndexedDB with embedded apps.
+  // If this is a pre-bundled copy, seed the store with embedded apps.
   if (typeof PWAHUB_SEED !== 'undefined' && Array.isArray(PWAHUB_SEED) && PWAHUB_SEED.length) {
     await seedApps(PWAHUB_SEED);
   }
@@ -1919,14 +1928,13 @@ async function init() {
   await registerSW();
 
   // Re-inject manifest after SW is ready so Chrome can see it
-  if (navigator.serviceWorker.controller) {
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
     injectHubManifest();
-  } else {
-    // SW just installed — wait for it to claim, then inject manifest
+  } else if (navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       injectHubManifest();
     });
-    injectHubManifest(); // also inject now (will cache for next load)
+    injectHubManifest();
   }
 
   renderAppList();
