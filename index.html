@@ -1031,9 +1031,11 @@ self.addEventListener('fetch', e => {
       openDB().then(() => dbGet(appSlug)).then(app => {
         if (!app) return new Response('{}', { headers: { 'Content-Type': 'application/manifest+json' } });
         const m = {
+          id: '/?app=' + app.slug,
           name: app.name,
           short_name: app.shortName || app.name,
           start_url: BASE_PATH + '?app=' + app.slug,
+          scope: BASE_PATH + '?app=' + app.slug,
           display: app.displayMode || 'standalone',
           background_color: '#000000',
           theme_color: '#000000',
@@ -1154,6 +1156,7 @@ function setSwStatus(ok, msg) {
 function injectHubManifest() {
   const icon = generateIcon('⬡', '#c8ff00', '#080808', 512);
   const manifest = {
+    id: '/pwa-hub',
     name: 'PWA Hub',
     short_name: 'PWA Hub',
     description: 'Turn any HTML into an installable PWA',
