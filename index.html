@@ -646,6 +646,32 @@ footer {
 footer a { color: var(--muted); text-decoration: none; }
 footer a:hover { color: var(--accent); }
 
+/* ── PLATFORM SELECTOR ── */
+.platform-tabs {
+  display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.platform-tab {
+  background: var(--bg); border: 1px solid var(--border2);
+  color: var(--muted); font-family: var(--mono); font-size: 10px;
+  letter-spacing: .1em; padding: 5px 11px; border-radius: 20px;
+  cursor: pointer; transition: all .15s; text-transform: uppercase;
+}
+.platform-tab:hover { border-color: var(--accent); color: var(--accent); }
+.platform-tab.active { background: var(--accent); border-color: var(--accent); color: #080808; }
+.platform-panel { display: none; }
+.platform-panel.active { display: block; }
+.platform-note {
+  font-size: 10px; color: var(--muted); letter-spacing: .05em;
+  line-height: 1.8; margin-bottom: 12px;
+}
+.platform-note code {
+  background: var(--bg); border: 1px solid var(--border2);
+  border-radius: 3px; padding: 1px 5px;
+  font-family: var(--mono); color: var(--accent); font-size: 10px;
+}
+.platform-note strong { color: var(--text); }
+.platform-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
 /* ── SETUP BANNER ── */
 .setup-banner {
   background: rgba(255,68,68,0.06);
@@ -712,13 +738,103 @@ footer a:hover { color: var(--accent); }
 
     <!-- SETUP BANNER -->
     <div class="setup-banner" id="setupBanner">
-      <div class="setup-banner-title">⚠ KURULUM GEREKLİ — sw.js DEPLOY EDİLMEDİ</div>
-      <div class="setup-banner-body">
-        GitHub Pages'da <code>blob:</code> URL ile Service Worker kaydedilemez.<br>
-        <code>sw.js</code> dosyasını indirip <code>pwa-hub.html</code> ile <strong>aynı klasöre</strong> deploy edin, sonra sayfayı yenileyin.
+      <div class="setup-banner-title">⚠ KURULUM GEREKLİ — sw.js BULUNAMADI</div>
+
+      <!-- Platform Tabs -->
+      <div class="platform-tabs" id="platformTabs">
+        <button class="platform-tab" data-platform="github"     onclick="selectPlatform('github')">GitHub Pages</button>
+        <button class="platform-tab" data-platform="netlify"    onclick="selectPlatform('netlify')">Netlify</button>
+        <button class="platform-tab" data-platform="cloudflare" onclick="selectPlatform('cloudflare')">Cloudflare Pages</button>
+        <button class="platform-tab" data-platform="vercel"     onclick="selectPlatform('vercel')">Vercel</button>
+        <button class="platform-tab" data-platform="apache"     onclick="selectPlatform('apache')">Apache</button>
+        <button class="platform-tab" data-platform="nginx"      onclick="selectPlatform('nginx')">Nginx</button>
+        <button class="platform-tab" data-platform="other"      onclick="selectPlatform('other')">Diğer</button>
       </div>
-      <div class="setup-banner-actions">
-        <button class="drop-btn" onclick="downloadSW()" style="color:var(--accent);border-color:var(--accent)">⬇ sw.js İndir</button>
+
+      <!-- GitHub Pages -->
+      <div class="platform-panel" id="panel-github">
+        <div class="platform-note">
+          GitHub Pages'da eksik path'ler <code>404.html</code> ile yakalanır.<br>
+          İki dosyayı <code>index.html</code> ile <strong>aynı klasöre</strong> koyun, commit edin, sayfayı yenileyin.
+        </div>
+        <div class="platform-actions">
+          <button class="drop-btn" onclick="downloadSW()" style="color:var(--accent);border-color:var(--accent)">⬇ sw.js</button>
+          <button class="drop-btn" onclick="download404()" style="color:var(--accent2);border-color:var(--accent2)">⬇ 404.html</button>
+        </div>
+      </div>
+
+      <!-- Netlify -->
+      <div class="platform-panel" id="panel-netlify">
+        <div class="platform-note">
+          Netlify'da <code>_redirects</code> dosyası SPA rewrite sağlar — <code>404.html</code> gerekmez.<br>
+          <code>sw.js</code> ve <code>_redirects</code> dosyalarını <code>index.html</code> ile <strong>aynı klasöre</strong> koyun, deploy edin.
+        </div>
+        <div class="platform-actions">
+          <button class="drop-btn" onclick="downloadSW()" style="color:var(--accent);border-color:var(--accent)">⬇ sw.js</button>
+          <button class="drop-btn" onclick="downloadNetlifyRedirects()" style="color:var(--accent2);border-color:var(--accent2)">⬇ _redirects</button>
+        </div>
+      </div>
+
+      <!-- Cloudflare Pages -->
+      <div class="platform-panel" id="panel-cloudflare">
+        <div class="platform-note">
+          Cloudflare Pages'da <code>_redirects</code> dosyası (Netlify formatı desteklenir) SPA rewrite sağlar.<br>
+          <code>sw.js</code> ve <code>_redirects</code> dosyalarını <code>index.html</code> ile <strong>aynı klasöre</strong> koyun.
+        </div>
+        <div class="platform-actions">
+          <button class="drop-btn" onclick="downloadSW()" style="color:var(--accent);border-color:var(--accent)">⬇ sw.js</button>
+          <button class="drop-btn" onclick="downloadNetlifyRedirects()" style="color:var(--accent2);border-color:var(--accent2)">⬇ _redirects</button>
+        </div>
+      </div>
+
+      <!-- Vercel -->
+      <div class="platform-panel" id="panel-vercel">
+        <div class="platform-note">
+          Vercel'de <code>vercel.json</code> rewrite kuralı SPA routing sağlar — <code>404.html</code> gerekmez.<br>
+          <code>sw.js</code> ve <code>vercel.json</code> dosyalarını <code>index.html</code> ile <strong>aynı klasöre</strong> koyun.
+        </div>
+        <div class="platform-actions">
+          <button class="drop-btn" onclick="downloadSW()" style="color:var(--accent);border-color:var(--accent)">⬇ sw.js</button>
+          <button class="drop-btn" onclick="downloadVercelJson()" style="color:var(--accent2);border-color:var(--accent2)">⬇ vercel.json</button>
+        </div>
+      </div>
+
+      <!-- Apache -->
+      <div class="platform-panel" id="panel-apache">
+        <div class="platform-note">
+          Apache'de <code>.htaccess</code> dosyası ile <code>/app/*</code> path'leri hub'a yönlendirilir.<br>
+          <code>sw.js</code> ve <code>.htaccess</code> dosyalarını <code>index.html</code> ile <strong>aynı klasöre</strong> koyun.<br>
+          <strong>Not:</strong> <code>AllowOverride All</code> aktif olmalı, <code>mod_rewrite</code> yüklü olmalı.
+        </div>
+        <div class="platform-actions">
+          <button class="drop-btn" onclick="downloadSW()" style="color:var(--accent);border-color:var(--accent)">⬇ sw.js</button>
+          <button class="drop-btn" onclick="downloadHtaccess()" style="color:var(--accent2);border-color:var(--accent2)">⬇ .htaccess</button>
+        </div>
+      </div>
+
+      <!-- Nginx -->
+      <div class="platform-panel" id="panel-nginx">
+        <div class="platform-note">
+          Nginx'de <code>location /app/</code> bloğu eklemeniz gerekir. Aşağıdaki snippet'i indirin.<br>
+          <code>sw.js</code>'yi <code>index.html</code> ile aynı dizine koyun, sonra nginx config'e snippet'i ekleyip reload edin.
+        </div>
+        <div class="platform-actions">
+          <button class="drop-btn" onclick="downloadSW()" style="color:var(--accent);border-color:var(--accent)">⬇ sw.js</button>
+          <button class="drop-btn" onclick="downloadNginxSnippet()" style="color:var(--accent2);border-color:var(--accent2)">⬇ nginx-pwahub.conf</button>
+        </div>
+      </div>
+
+      <!-- Other -->
+      <div class="platform-panel" id="panel-other">
+        <div class="platform-note">
+          Herhangi bir HTTPS static host için <code>sw.js</code> yeterlidir.<br>
+          Tek gereksinim: <strong>/app/* path'leri</strong> için <code>index.html</code> dönülmesi (SPA rewrite veya 404 fallback).<br>
+          Hosting'iniz bunu destekliyorsa sadece <code>sw.js</code> yükleyin. Desteklemiyorsa <code>404.html</code> deneyin.
+        </div>
+        <div class="platform-actions">
+          <button class="drop-btn" onclick="downloadSW()" style="color:var(--accent);border-color:var(--accent)">⬇ sw.js</button>
+          <button class="drop-btn" onclick="download404()" style="color:var(--accent2);border-color:var(--accent2)">⬇ 404.html (fallback)</button>
+        </div>
       </div>
     </div>
 
@@ -877,7 +993,7 @@ footer a:hover { color: var(--accent); }
 
 <footer>
   <div class="wrap">
-    PWAHUB · SINGLE FILE · GITHUB PAGES · NO BUILD TOOLS · NO SERVER · <a href="https://github.com" target="_blank">FORK ON GITHUB</a>
+    PWAHUB · SINGLE FILE · ANY STATIC HOST · NO BUILD TOOLS · NO SERVER · <a href="https://github.com" target="_blank">FORK ON GITHUB</a>
   </div>
 </footer>
 
@@ -892,7 +1008,7 @@ footer a:hover { color: var(--accent); }
 const DB_NAME    = 'pwahub';
 const DB_VERSION = 1;
 const STORE_APPS = 'apps';
-const SW_CACHE   = 'pwahub-shell-v1';
+const SW_CACHE   = 'pwahub-shell-v2';
 const HUB_URL    = location.href.split('?')[0].split('#')[0];
 const BASE_PATH  = HUB_URL.substring(0, HUB_URL.lastIndexOf('/') + 1);
 
@@ -966,7 +1082,7 @@ const SW_CODE = `'use strict';
 const DB_NAME    = 'pwahub';
 const DB_VERSION = 1;
 const STORE_APPS = 'apps';
-const CACHE_NAME = 'pwahub-shell-v1';
+const CACHE_NAME = 'pwahub-shell-v2';
 // Derive paths from SW script location — works regardless of deployment directory
 const BASE_PATH  = new URL('./', self.location).href;
 const MANIFEST_PATH = BASE_PATH + 'manifest.json';
@@ -1013,10 +1129,70 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  const appSlug = url.searchParams.get('app');
+  const basePathname = new URL(BASE_PATH).pathname; // e.g. /repo/ or /
+  const appPrefix    = basePathname + 'app/';       // e.g. /repo/app/
 
-  // Hub manifest
-  if (e.request.url.startsWith(MANIFEST_PATH) && !appSlug) {
+  // ════════════════════════════════════════════
+  // PATH-BASED APP ROUTING  /app/{slug}/...
+  // This gives each app a DISTINCT scope so
+  // Chrome treats them as separate installable PWAs.
+  // ════════════════════════════════════════════
+  if (url.pathname.startsWith(appPrefix)) {
+    const remainder = url.pathname.slice(appPrefix.length); // "slug/" or "slug/manifest.json"
+    const slug      = remainder.split('/')[0];
+    const subpath   = remainder.slice(slug.length).replace(/^\//, ''); // "" | "manifest.json"
+
+    if (!slug) { /* fall through to network */ }
+
+    // ── Per-app manifest: /app/{slug}/manifest.json
+    else if (subpath === 'manifest.json') {
+      e.respondWith(
+        openDB().then(() => dbGet(slug)).then(app => {
+          if (!app) return new Response('{}', { headers: { 'Content-Type': 'application/manifest+json' } });
+          const scopeUrl = BASE_PATH + 'app/' + app.slug + '/';
+          const m = {
+            id:               scopeUrl,
+            name:             app.name,
+            short_name:       app.shortName || app.name,
+            start_url:        scopeUrl,
+            scope:            scopeUrl,
+            display:          app.displayMode  || 'standalone',
+            orientation:      app.orientation  || 'any',
+            background_color: '#000000',
+            theme_color:      '#000000',
+            icons: [
+              { src: app.icon, sizes: '192x192', type: 'image/png', purpose: 'any' },
+              { src: app.icon, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+            ]
+          };
+          return new Response(JSON.stringify(m), {
+            headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store' }
+          });
+        }).catch(() => new Response('{}', { headers: { 'Content-Type': 'application/manifest+json' } }))
+      );
+      return;
+    }
+
+    // ── App document: /app/{slug}/ (also handles in-scope sub-navigations)
+    else {
+      e.respondWith(
+        openDB().then(() => dbGet(slug)).then(app => {
+          if (!app) return new Response(
+            '<h1 style="font-family:sans-serif;padding:2rem">App not found — open PWA Hub to reinstall.</h1>',
+            { headers: { 'Content-Type': 'text/html' } }
+          );
+          return new Response(app.html, {
+            headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
+          });
+        }).catch(() => new Response('<h1>Error loading app</h1>', { headers: { 'Content-Type': 'text/html' } }))
+      );
+      return;
+    }
+  }
+
+  // ── Hub manifest: /manifest.json  (no app in path)
+  if (url.pathname === basePathname + 'manifest.json' ||
+      url.pathname === basePathname.replace(/\/$/, '') + '/manifest.json') {
     e.respondWith(
       caches.match(MANIFEST_PATH).then(r => r || new Response('{}', {
         headers: { 'Content-Type': 'application/manifest+json' }
@@ -1025,37 +1201,10 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Generated app manifest: /manifest.json?app=slug
-  if (e.request.url.startsWith(MANIFEST_PATH) && appSlug) {
-    e.respondWith(
-      openDB().then(() => dbGet(appSlug)).then(app => {
-        if (!app) return new Response('{}', { headers: { 'Content-Type': 'application/manifest+json' } });
-        const m = {
-          id: '/?app=' + app.slug,
-          name: app.name,
-          short_name: app.shortName || app.name,
-          start_url: BASE_PATH + '?app=' + app.slug,
-          scope: BASE_PATH + '?app=' + app.slug,
-          display: app.displayMode || 'standalone',
-          background_color: '#000000',
-          theme_color: '#000000',
-          icons: [
-            { src: app.icon, sizes: '192x192', type: 'image/png', purpose: 'any' },
-            { src: app.icon, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-          ]
-        };
-        return new Response(JSON.stringify(m), {
-          headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store' }
-        });
-      }).catch(() => new Response('{}', { headers: { 'Content-Type': 'application/manifest+json' } }))
-    );
-    return;
-  }
-
-  // Hub shell — serve from cache
-  if (!appSlug && e.request.destination === 'document' &&
-      (url.pathname === new URL(BASE_PATH).pathname ||
-       url.pathname === new URL(BASE_PATH).pathname + 'index.html' ||
+  // ── Hub shell — serve from cache
+  if (e.request.destination === 'document' &&
+      (url.pathname === basePathname ||
+       url.pathname === basePathname + 'index.html' ||
        url.pathname.endsWith('/pwa-hub.html'))) {
     e.respondWith(
       caches.match(BASE_PATH).then(cached => cached || fetch(e.request).then(r => {
@@ -1066,7 +1215,8 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Generated app: ?app=slug
+  // ── Legacy: ?app=slug  (backward-compat for apps stored before v2)
+  const appSlug = url.searchParams.get('app');
   if (appSlug) {
     e.respondWith(
       openDB().then(() => dbGet(appSlug)).then(app => {
@@ -1114,16 +1264,15 @@ async function registerSW() {
     setSwStatus(false, 'SERVICE WORKER NOT SUPPORTED'); return;
   }
   if (location.protocol === 'file:') {
-    setSwStatus(false, 'NEEDS HTTPS — USE GITHUB PAGES'); return;
+    setSwStatus(false, 'NEEDS HTTPS — DEPLOY TO A WEB SERVER'); return;
   }
   try {
-    // Only ./sw.js works on GitHub Pages — blob: URLs are rejected as SW scripts.
+    // sw.js must be a real same-origin file — blob: URLs are rejected by all browsers.
     swRegistration = await navigator.serviceWorker.register('./sw.js', { scope: './' });
     setSwStatus(true, 'SERVICE WORKER ACTIVE');
     console.log('[PWAHUB] SW registered, scope:', swRegistration.scope);
 
     // Tell the SW the exact hub file URL so it can cache it regardless of filename.
-    // This matters on GitHub Pages when the file isn't served as index.html.
     const tellSW = reg => {
       const sw = reg.active || reg.installing || reg.waiting;
       if (sw) sw.postMessage({ type: 'CACHE_HUB', url: HUB_URL });
@@ -1139,8 +1288,9 @@ async function registerSW() {
       });
     }
   } catch (err) {
-    setSwStatus(false, 'DEPLOY sw.js TO ACTIVATE');
+    setSwStatus(false, 'SW.JS BULUNAMADI — KURULUM GEREKLİ');
     console.warn('[PWAHUB] ./sw.js not found — download and deploy it:', err.message);
+    initPlatformSelector();
     document.getElementById('setupBanner').classList.add('visible');
   }
 }
@@ -1171,7 +1321,7 @@ function injectHubManifest() {
   document.getElementById('hubManifest').href = manifestUrl;
   // Store in SW cache so the SW can serve it when fetched
   if ('caches' in window) {
-    caches.open('pwahub-shell-v1').then(c =>
+    caches.open('pwahub-shell-v2').then(c =>
       c.put(manifestUrl, new Response(JSON.stringify(manifest), {
         headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store' }
       }))
@@ -1312,7 +1462,8 @@ async function _generatePWA() {
   const orientation = document.getElementById('appOrientation').value;
 
   const slug     = slugify(name) + '-' + Date.now().toString(36);
-  const appUrl   = BASE_PATH + '?app=' + slug;
+  // ── PATH-BASED URL — gives each app a unique scope Chrome can distinguish
+  const appUrl   = BASE_PATH + 'app/' + slug + '/';
 
   // Icon
   let label, bg, fg;
@@ -1324,9 +1475,8 @@ async function _generatePWA() {
   const icon512 = generateIcon(label, bg, fg, 512);
   const icon192 = generateIcon(label, bg, fg, 192);
 
-  // Manifest URL — served by SW from /manifest.json?app=slug
-  // Chrome 93+ rejects data: and blob: manifest URLs; must use a real path.
-  const manifestUrl = BASE_PATH + 'manifest.json?app=' + slug;
+  // Manifest URL — /app/{slug}/manifest.json  (unique path → unique scope)
+  const manifestUrl = BASE_PATH + 'app/' + slug + '/manifest.json';
 
   // Inject PWA meta into the source HTML
   const metaInjection  = `
@@ -1417,7 +1567,8 @@ function updateInstallButton() {
     btn.disabled = false; // still clickable — opens the URL
     hint.innerHTML =
       `<strong>Open the app URL first</strong>, then Chrome menu → <strong>Add to Home Screen</strong><br>` +
-      `<a href="${document.getElementById('installUrl').textContent}" target="_blank">Open App →</a>`;
+      `<a href="${document.getElementById('installUrl').textContent}" target="_blank">Open App →</a><br>` +
+      `<span style="font-size:10px;opacity:0.7">Each app has a unique path (/app/slug/) so Chrome treats them as separate installable PWAs.</span>`;
   }
 }
 
@@ -1864,9 +2015,9 @@ async function importApps(file) {
 
 async function writeApps(apps) {
   for (const app of apps) {
-    // Ensure appUrl matches current BASE_PATH (bundle may come from different deployment)
+    // Use path-based URL for new/imported apps — gives each a unique PWA scope
     const slug = app.slug;
-    const appUrl = BASE_PATH + '?app=' + slug;
+    const appUrl = BASE_PATH + 'app/' + slug + '/';
     await dbPut(STORE_APPS, { ...app, appUrl });
   }
 }
@@ -1906,8 +2057,55 @@ document.getElementById('collisionModal').addEventListener('click', e => {
 // INIT
 // ════════════════════════════════════════════════
 async function init() {
-  // Guard: if hub loads at ?app= URL, GitHub Pages served us as 404 fallback.
-  // The SW isn't active yet — don't try to register it here, just show the error.
+  // ════════════════════════════════════════════════
+  // COLD-START DETECTION
+  // Two possible paths depending on how the host handles missing routes:
+  //
+  // A) SPA-rewrite host (Netlify, Vercel, Cloudflare Pages, Apache, Nginx):
+  //    Server returns index.html (200) for /app/{slug}/ → we're running at
+  //    an app pathname. Store slug, bounce to hub root to register SW.
+  //
+  // B) 404-fallback host (GitHub Pages, basic static hosts):
+  //    Server returns 404.html for /app/{slug}/ → 404.html stores slug in
+  //    sessionStorage and bounces here. We pick up the stored slug.
+  // ════════════════════════════════════════════════
+
+  // Case A: served at /app/{slug}/ by SPA rewrite
+  const spaMatch = location.pathname.match(/\/app\/([^/]+)/);
+  if (spaMatch && !navigator.serviceWorker?.controller) {
+    const slug = spaMatch[1];
+    sessionStorage.setItem('pwahub_cold', slug);
+    // Navigate to hub root so SW can register, then init() will redirect back
+    location.replace(BASE_PATH);
+    return;
+  }
+
+  // Case B: 404.html stored the slug, we're back at hub root
+  const coldSlug = sessionStorage.getItem('pwahub_cold');
+  if (coldSlug) {
+    sessionStorage.removeItem('pwahub_cold');
+    const fb = document.getElementById('appFallback');
+    fb.classList.add('visible');
+    fb.querySelector('.app-fallback-title').textContent = '⏳ UYGULAMA BAŞLATILIYOR…';
+    fb.querySelector('.app-fallback-sub').innerHTML =
+      'Service Worker yeniden kaydediliyor, bir saniye bekleyin…';
+
+    try { await openDB(); } catch (e) { _memStore = []; }
+    await registerSW();
+
+    const go = () => location.replace(BASE_PATH + 'app/' + coldSlug + '/');
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      go();
+    } else if (navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener('controllerchange', go);
+      setTimeout(go, 4000);
+    } else {
+      go();
+    }
+    return;
+  }
+
+  // Legacy: ?app= URL without SW active
   if (new URLSearchParams(location.search).has('app')) {
     document.getElementById('appFallback').classList.add('visible');
     return;
@@ -1956,11 +2154,11 @@ async function seedApps(seed) {
       if (existingSlugs.has(app.slug)) continue;
 
       // Rewrite appUrl to current server — the seed carries the original server's URL.
-      const appUrl = BASE_PATH + '?app=' + app.slug;
+      const appUrl = BASE_PATH + 'app/' + app.slug + '/';
 
       // Re-inject manifest link pointing to the current server.
       // stripHubManifest removed it at bundle time to avoid stale URLs.
-      const manifestUrl = BASE_PATH + 'manifest.json?app=' + app.slug;
+      const manifestUrl = BASE_PATH + 'app/' + app.slug + '/manifest.json';
       const manifestTag = '<link rel="manifest" href="' + manifestUrl + '">';
       let html = app.html;
       if (/<head[^>]*>/i.test(html)) {
@@ -1982,7 +2180,6 @@ async function seedApps(seed) {
 // SW DOWNLOAD — standalone sw.js for GitHub Pages
 // ════════════════════════════════════════════════
 function downloadSW() {
-  // SW_CODE is already the correct standalone content (no template interpolation)
   const blob = new Blob([SW_CODE], { type: 'application/javascript' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1991,7 +2188,159 @@ function downloadSW() {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  toast('sw.js indirildi — pwa-hub.html ile aynı klasöre koyun', 'ok');
+  toast('sw.js indirildi — index.html ile aynı klasöre koyun', 'ok');
+}
+
+// ════════════════════════════════════════════════
+// 404.html DOWNLOAD — GitHub Pages cold-start fix
+// ════════════════════════════════════════════════
+// When a user taps an installed PWA icon and the SW is inactive (fresh install,
+// browser restarted, etc.), GitHub Pages gets the request for e.g.
+//   /repo/app/my-app-xyz123/
+// and, finding no such file, serves 404.html instead.
+// This stub detects the app slug from the URL, stores it in sessionStorage,
+// then bounces the user to the hub root so the SW can be re-registered.
+// Once the SW is controlling the client, the hub's init() sees the stored slug
+// and navigates back to the correct app path.
+function download404() {
+  const code = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>PWA Hub — Loading…</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{margin:0;min-height:100vh;background:#080808;display:flex;align-items:center;
+       justify-content:center;flex-direction:column;font-family:monospace;color:#5e5e5e;}
+  .logo{font-size:22px;font-weight:800;letter-spacing:-.02em;color:#e6e6e6;
+        font-family:sans-serif;margin-bottom:12px;}
+  .logo span{color:#c8ff00;}
+  p{font-size:11px;letter-spacing:.12em;text-transform:uppercase;}
+</style>
+</head>
+<body>
+  <div class="logo">PWA<span>HUB</span></div>
+  <p>Uygulama başlatılıyor…</p>
+<scr` + `ipt>
+// Extract the app slug from the path: /repo/app/{slug}/...
+(function(){
+  var path  = location.pathname;
+  var match = path.match(/\\/app\\/([^\\/]+)/);
+  if (match) {
+    sessionStorage.setItem('pwahub_cold', match[1]);
+  }
+  // Navigate to the hub root (SW will be re-registered there)
+  var hubRoot = location.href
+    .replace(/\\/app\\/.*$/, '/')   // strip /app/slug/... → keep base
+    .replace(/\\/[^/]*\\?.*$/, '/');  // strip filename+query if hub isn't index.html
+  // Safer: just go up until we find the hub
+  // Best approach: strip everything from /app/ onward
+  var base = location.href.split('/app/')[0] + '/';
+  location.replace(base);
+})();
+<\/script>
+</body></html>`;
+
+  const blob = new Blob([code], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '404.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('404.html indirildi — sw.js ile aynı klasöre koyun', 'ok');
+}
+
+// ════════════════════════════════════════════════
+// PLATFORM DETECTION & SELECTOR
+// ════════════════════════════════════════════════
+function detectPlatform() {
+  const h = location.hostname;
+  if (h.endsWith('.github.io'))     return 'github';
+  if (h.endsWith('.netlify.app') || h.endsWith('.netlify.com')) return 'netlify';
+  if (h.endsWith('.pages.dev'))     return 'cloudflare';
+  if (h.endsWith('.vercel.app'))    return 'vercel';
+  return 'other';
+}
+
+function selectPlatform(platform) {
+  document.querySelectorAll('.platform-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.platform === platform)
+  );
+  document.querySelectorAll('.platform-panel').forEach(p =>
+    p.classList.toggle('active', p.id === 'panel-' + platform)
+  );
+}
+
+function initPlatformSelector() {
+  const detected = detectPlatform();
+  selectPlatform(detected);
+}
+
+// ════════════════════════════════════════════════
+// CONFIG FILE DOWNLOADERS
+// ════════════════════════════════════════════════
+function _dl(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+function downloadNetlifyRedirects() {
+  // Netlify/Cloudflare Pages: /app/* → /index.html 200 (SPA rewrite, no 404.html needed)
+  // The SW intercepts /app/{slug}/ once active; the rewrite only matters on cold start.
+  const base = new URL(BASE_PATH).pathname.replace(/\/$/, '') || '';
+  const appPath = base + '/app/*';
+  const dest    = base + '/index.html';
+  _dl(`${appPath}  ${dest}  200\n`, '_redirects', 'text/plain');
+  toast('_redirects indirildi — index.html ile aynı klasöre koyun', 'ok');
+}
+
+function downloadVercelJson() {
+  const base    = new URL(BASE_PATH).pathname.replace(/\/$/, '') || '';
+  const source  = base + '/app/:path*';
+  const dest    = base + '/index.html';
+  const config = {
+    rewrites: [{ source, destination: dest }]
+  };
+  _dl(JSON.stringify(config, null, 2) + '\n', 'vercel.json', 'application/json');
+  toast('vercel.json indirildi — index.html ile aynı klasöre koyun', 'ok');
+}
+
+function downloadHtaccess() {
+  const base   = new URL(BASE_PATH).pathname.replace(/\/$/, '') || '';
+  const code = [
+    'RewriteEngine On',
+    `RewriteBase ${base || '/'}`,
+    '# PWA Hub — route /app/{slug}/ cold-starts to hub so SW can register',
+    'RewriteCond %{REQUEST_FILENAME} !-f',
+    'RewriteCond %{REQUEST_FILENAME} !-d',
+    `RewriteRule ^app/.+ ${base || ''}/index.html [L]`,
+  ].join('\n') + '\n';
+  _dl(code, '.htaccess', 'text/plain');
+  toast('.htaccess indirildi — index.html ile aynı klasöre koyun', 'ok');
+}
+
+function downloadNginxSnippet() {
+  const base = new URL(BASE_PATH).pathname.replace(/\/$/, '') || '';
+  const code = [
+    '# PWA Hub — add this inside your server {} block',
+    '# (adjust root/alias to match your actual document root)',
+    `location ${base}/app/ {`,
+    `    try_files $uri ${base}/index.html;`,
+    '}',
+    '',
+    '# Make sure sw.js is not cached by the browser',
+    `location = ${base}/sw.js {`,
+    '    add_header Cache-Control "no-cache, no-store, must-revalidate";',
+    '}',
+  ].join('\n') + '\n';
+  _dl(code, 'nginx-pwahub.conf', 'text/plain');
+  toast('nginx-pwahub.conf indirildi — server bloğuna ekleyin, nginx reload yapın', 'ok');
 }
 
 init();
