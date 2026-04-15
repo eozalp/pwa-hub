@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="PWA Hub">
@@ -1141,7 +1140,7 @@ self.addEventListener('fetch', e => {
   if (url.pathname.startsWith(appPrefix)) {
     const remainder = url.pathname.slice(appPrefix.length); // "slug/" or "slug/manifest.json"
     const slug      = remainder.split('/')[0];
-    const subpath   = remainder.slice(slug.length).replace(/^\\//, ''); // "" | "manifest.json"
+    const subpath   = remainder.slice(slug.length).replace(/^\//, ''); // "" | "manifest.json"
 
     if (!slug) { /* fall through to network */ }
 
@@ -1251,8 +1250,13 @@ self.addEventListener('message', e => {
   // Client tells SW the real hub file URL (e.g. /pwa-hub.html, not just /dir/).
   // Needed on GitHub Pages when the file isn't named index.html.
   if (e.data.type === 'CACHE_HUB' && e.data.url) {
+    // Fetch the real hub file (e.g. pwa-hub.html) and store it under the
+    // canonical BASE_PATH key so caches.match(BASE_PATH) finds it offline,
+    // even when the hub is not named index.html.
     caches.open(CACHE_NAME).then(c =>
-      c.add(new Request(e.data.url, { cache: 'reload' })).catch(() => {})
+      fetch(new Request(e.data.url, { cache: 'reload' }))
+        .then(r => { if (r.ok) { c.put(BASE_PATH, r.clone()); c.put(e.data.url, r); } })
+        .catch(() => {})
     );
   }
 });
@@ -1307,7 +1311,7 @@ function setSwStatus(ok, msg) {
 function injectHubManifest() {
   const icon = generateIcon('⬡', '#c8ff00', '#080808', 512);
   const manifest = {
-    id: '/pwa-hub',
+    id: BASE_PATH,
     name: 'PWA Hub',
     short_name: 'PWA Hub',
     description: 'Turn any HTML into an installable PWA',
@@ -1820,7 +1824,6 @@ function buildLauncherHTML(apps) {
     '<head>',
     '<meta charset="UTF-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">',
-    '<meta name="mobile-web-app-capable" content="yes">',
     '<meta name="apple-mobile-web-app-capable" content="yes">',
     '<meta name="theme-color" content="#080808">',
     '<title>PWA Hub Bundle \u00b7 ' + count + ' app' + (count > 1 ? 's' : '') + '</title>',
