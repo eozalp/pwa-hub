@@ -93,7 +93,8 @@ Built-in deployment guides for:
 
 Upload these files to your hosting:
 
-/index.html   (or pwa-hub.html) /sw.js
+/index.html   (or pwa-hub.html)  
+/sw.js  
 
 ---
 
@@ -107,74 +108,54 @@ You MUST route:
 
 #### Examples:
 
-##### GitHub Pages
+**GitHub Pages**
 - Add `404.html` fallback  
 
-##### Netlify / Cloudflare
-
+**Netlify / Cloudflare**
 /*    /index.html   200
 
-##### Vercel
-```json
+**Vercel**
 {
   "routes": [
     { "src": "/app/(.*)", "dest": "/index.html" }
   ]
 }
 
-Nginx
-
+**Nginx**
 location /app/ {
   try_files $uri /index.html;
 }
 
-
 ---
 
-🚀 Usage
+## 🚀 Usage
 
-1. Open PWA Hub
-
+### 1. Open PWA Hub
 In browser (served over HTTPS)
 
-2. Drop HTML File
+### 2. Drop HTML File
+- Must be self-contained  
+- No external dependencies (recommended)  
 
-Must be self-contained
+### 3. Configure App
+- Name  
+- Icon  
+- Display mode  
 
-No external dependencies (recommended)
-
-
-3. Configure App
-
-Name
-
-Icon
-
-Display mode
-
-
-4. Generate
-
-Stored in browser
-
-URL created:
-
-
+### 4. Generate
+- Stored in browser  
+- URL created:
 /app/{slug}/
 
-5. Install
-
-Click Install App
-
-Or browser menu → Add to Home Screen
-
-
+### 5. Install
+- Click Install App  
+- Or browser menu → Add to Home Screen  
 
 ---
 
-🧬 Architecture
+## 🧬 Architecture
 
-📁 Storage Model
+### Storage Model
 
 {
   slug: string,
@@ -189,182 +170,121 @@ Or browser menu → Add to Home Screen
   created: timestamp
 }
 
-
 ---
 
-🔁 Routing Flow
+### Routing Flow
 
 User visits /app/my-app/
 
-→ Service Worker intercepts
-→ Loads app from IndexedDB
-→ Returns HTML response
-
+→ Service Worker intercepts  
+→ Loads app from IndexedDB  
+→ Returns HTML response  
 
 ---
 
-📄 Dynamic Manifest
+### Dynamic Manifest
 
 Each app gets:
-
 /app/{slug}/manifest.json
 
 Generated on-the-fly by Service Worker.
 
-
 ---
 
-⚙️ Install Mechanism
-
-Each app injects:
+### Install Mechanism
 
 beforeinstallprompt → captured → custom install button
 
 Ensures:
-
-Independent install per app
-
-No hub interference
-
-
+- Independent install per app  
+- No hub interference  
 
 ---
 
-⚠️ Limitations
+## ⚠️ Limitations
 
-🔒 Browser Constraints
+### Browser Constraints
+- Requires HTTPS (except localhost)  
+- No Service Worker on file://  
+- IndexedDB limits vary per browser  
 
-Requires HTTPS (except localhost)
+### HTML Requirements
+- Best with self-contained files  
+- External assets may break offline behavior  
 
-No Service Worker on file://
-
-IndexedDB limits vary per browser
-
-
-📦 HTML Requirements
-
-Best with self-contained files
-
-External assets may break offline behavior
-
-
-📱 iOS Notes
-
-No beforeinstallprompt
-
-Manual install via Safari → Share → Add to Home Screen
-
-
+### iOS Notes
+- No beforeinstallprompt  
+- Manual install via Safari → Share → Add to Home Screen  
 
 ---
 
-🧪 Tested Environments
+## 🧪 Tested Environments
 
-Chrome (Android/Desktop) ✅
-
-Edge ✅
-
-Brave ✅
-
-Safari ⚠️ (limited PWA support)
-
-Firefox ⚠️ (no install prompt)
-
-
+- Chrome (Android/Desktop)  
+- Edge  
+- Brave  
+- Safari (limited PWA support)  
+- Firefox (no install prompt)  
 
 ---
 
-📤 Export / Import
+## 📤 Export / Import
 
-Export Formats
+### Export Formats
+- .pwahub (recommended)  
+- JSON  
 
-.pwahub (recommended)
-
-JSON
-
-
-Bundle Mode
-
-Combine all apps into a single HTML file
-
-Fully portable
-
-
+### Bundle Mode
+- Combine all apps into a single HTML  
+- Fully portable  
 
 ---
 
-🧱 Design Principles
+## 🧱 Design Principles
 
-Single file
-
-Zero dependencies
-
-Offline-first
-
-No build step
-
-User-owned data
-
-Browser-native APIs only
-
-
+- Single file  
+- Zero dependencies  
+- Offline-first  
+- No build step  
+- User-owned data  
+- Browser-native APIs only  
 
 ---
 
-🛡️ Security Notes
+## 🛡️ Security Notes
 
-Apps run in same origin
-
-No sandboxing between apps
-
-Only load trusted HTML
-
-
+- Apps run in same origin  
+- No sandboxing between apps  
+- Only load trusted HTML  
 
 ---
 
-🧭 Roadmap Ideas
+## 🧭 Roadmap Ideas
 
-App sandboxing (iframe isolation)
-
-External asset bundling
-
-Cross-device sync
-
-Compression (WASM)
-
-Encrypted payloads
-
-
+- App sandboxing (iframe isolation)  
+- External asset bundling  
+- Cross-device sync  
+- Compression (WASM)  
+- Encrypted payloads  
 
 ---
 
-🤝 Contributing
+## 🤝 Contributing
 
-1. Fork repository
-
-
-2. Modify pwa-hub.html
-
-
-3. Keep it single-file
-
-
-4. Submit PR
-
-
-
+1. Fork repository  
+2. Modify `pwa-hub.html`  
+3. Keep it single-file  
+4. Submit PR  
 
 ---
 
-📄 License
+## 📄 License
 
-MIT
-
+MIT  
 
 ---
 
-⚡ Philosophy
+## ⚡ Philosophy
 
-> The web is already an app platform.
-This just removes the friction.
+> The web is already an app platform.  
+> This just removes the friction.
