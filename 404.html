@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>PWA Hub — Loading…</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{margin:0;min-height:100vh;background:#080808;display:flex;align-items:center;
+       justify-content:center;flex-direction:column;font-family:monospace;color:#5e5e5e;}
+  .logo{font-size:22px;font-weight:800;letter-spacing:-.02em;color:#e6e6e6;
+        font-family:sans-serif;margin-bottom:12px;}
+  .logo span{color:#c8ff00;}
+  p{font-size:11px;letter-spacing:.12em;text-transform:uppercase;}
+</style>
+</head>
+<body>
+  <div class="logo">PWA<span>HUB</span></div>
+  <p>Uygulama başlatılıyor…</p>
+<script>
+// Extract the app slug from the path: /repo/app/{slug}/...
+(function(){
+  var path  = location.pathname;
+  var match = path.match(/\/app\/([^\/]+)/);
+  if (match) {
+    sessionStorage.setItem('pwahub_cold', match[1]);
+  }
+  // Navigate to the hub root (SW will be re-registered there)
+  var hubRoot = location.href
+    .replace(/\/app\/.*$/, '/')   // strip /app/slug/... → keep base
+    .replace(/\/[^/]*\?.*$/, '/');  // strip filename+query if hub isn't index.html
+  // Safer: just go up until we find the hub
+  // Best approach: strip everything from /app/ onward
+  var base = location.href.split('/app/')[0] + '/';
+  location.replace(base);
+})();
+</script>
+</body></html>
